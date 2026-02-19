@@ -1,0 +1,4100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>APEX CRASH — Full Audio + Physics</title>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;500;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --accent: #e8ff00;
+    --red: #ff3020;
+    --orange: #ff7700;
+    --dim: #ffffff18;
+    --text: #ffffffcc;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; touch-action:none; }
+  body { background:#000; overflow:hidden; touch-action:none; -webkit-tap-highlight-color:transparent; }
+  canvas { display:block; }
+
+  #hud { position:fixed; inset:0; pointer-events:none; font-family:'Share Tech Mono',monospace; color:var(--text); }
+
+  /* top bar */
+  #topbar {
+    position:absolute; top:0; left:0; right:0;
+    display:flex; justify-content:space-between; align-items:flex-start;
+    padding:18px 28px 0;
+    background:linear-gradient(to bottom,#000000cc,transparent);
+  }
+  #logo { font-family:'Rajdhani',sans-serif; font-size:26px; font-weight:700; letter-spacing:8px; color:var(--accent); text-shadow:0 0 24px var(--accent); }
+  #logo span { display:block; font-size:11px; font-weight:300; letter-spacing:5px; color:#fff6; margin-top:-4px; }
+  #controls-hint { font-size:9px; letter-spacing:2px; opacity:.3; line-height:2; text-align:right; padding-bottom:8px; }
+
+  /* speed cluster */
+  #speed-cluster {
+    position:absolute; bottom:28px; right:28px;
+    background:#00000099; border:1px solid var(--dim); border-radius:3px;
+    padding:14px 18px 12px; backdrop-filter:blur(8px); min-width:180px;
+  }
+  #spd { font-family:'Rajdhani',sans-serif; font-size:76px; font-weight:700; line-height:1; color:#fff; letter-spacing:-3px; }
+  #spd-unit { font-size:9px; letter-spacing:4px; opacity:.4; margin-top:-4px; }
+  .bar-lbl { font-size:8px; letter-spacing:3px; opacity:.35; margin-top:12px; margin-bottom:3px; }
+  .bar { height:3px; background:#fff1; border-radius:2px; overflow:hidden; }
+  .bar-fill { height:100%; border-radius:2px; transition:width .05s; }
+  #t-fill { background:var(--accent); box-shadow:0 0 6px var(--accent); }
+  #b-fill { background:var(--red);    box-shadow:0 0 6px var(--red); }
+
+  /* left panel */
+  #left { position:absolute; bottom:28px; left:28px; background:#00000099; border:1px solid var(--dim); border-radius:3px; padding:12px 16px; backdrop-filter:blur(8px); }
+  .sr { display:flex; justify-content:space-between; gap:18px; margin-bottom:7px; }
+  .sr:last-child { margin-bottom:0; }
+  .sl { font-size:8px; letter-spacing:3px; opacity:.35; }
+  .sv { font-family:'Rajdhani',sans-serif; font-size:18px; font-weight:500; color:#fff; }
+  #gear-v { font-size:34px; font-weight:700; color:var(--accent); text-shadow:0 0 12px var(--accent); }
+
+  /* RPM */
+  #rpm-wrap { position:absolute; bottom:28px; left:50%; transform:translateX(-50%); }
+
+  /* crash overlay */
+  #crash-overlay {
+    position:absolute; inset:0;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    pointer-events:none; opacity:0; transition:opacity .3s;
+  }
+  #crash-overlay.show { opacity:1; pointer-events:all; }
+  #crash-title { font-family:'Rajdhani',sans-serif; font-size:72px; font-weight:700; letter-spacing:12px; color:var(--red); text-shadow:0 0 40px var(--red), 0 0 80px #ff000055; }
+  #crash-sub { font-size:11px; letter-spacing:5px; opacity:.5; margin-top:8px; }
+  #crash-stats { margin-top:28px; font-size:11px; letter-spacing:3px; line-height:2.2; text-align:center; }
+  #crash-stats span { color:var(--accent); }
+  #reset-btn {
+    margin-top:28px; padding:12px 32px; border:1px solid var(--accent);
+    background:transparent; color:var(--accent); font-family:'Share Tech Mono',monospace;
+    font-size:12px; letter-spacing:4px; cursor:pointer; pointer-events:all;
+    transition: background .2s;
+  }
+  #reset-btn:hover { background:var(--accent); color:#000; }
+
+  /* rollover warning */
+  #roll-warn {
+    position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+    font-size:13px; letter-spacing:6px; color:var(--orange);
+    text-shadow:0 0 20px var(--orange); opacity:0; transition:opacity .15s;
+    text-align:center;
+  }
+  #roll-warn.show { opacity:1; }
+
+  /* ── MAP OVERLAY (toggle M) ── */
+  #map-panel {
+    display:none; position:absolute; inset:0;
+    background:#000000ee; z-index:100;
+    font-family:'Share Tech Mono',monospace;
+    flex-direction:column; align-items:center; justify-content:center;
+  }
+  #map-panel.show { display:flex; }
+  #map-canvas-wrap {
+    position:relative; border:2px solid #e8ff0055;
+    box-shadow:0 0 40px #e8ff0022, inset 0 0 60px #000a;
+    cursor:grab;
+  }
+  #map-canvas-wrap:active { cursor:grabbing; }
+  #map-canvas { display:block; }
+  #map-title {
+    font-family:'Rajdhani',sans-serif; font-size:14px; font-weight:700;
+    letter-spacing:8px; color:var(--accent); margin-bottom:16px;
+    text-shadow:0 0 20px var(--accent);
+  }
+  #map-coords {
+    font-size:10px; letter-spacing:3px; color:#ffffff88; margin-top:12px;
+  }
+  #map-close-hint {
+    font-size:9px; letter-spacing:4px; color:#ffffff33; margin-top:8px;
+  }
+  /* minimap (always visible, bottom-left corner) */
+  #minimap {
+    position:absolute; bottom:28px; left:220px;
+    width:120px; height:120px;
+    border:1px solid #ffffff22; border-radius:2px;
+    background:#00000088; overflow:hidden;
+  }
+  #minimap canvas { display:block; }
+
+  /* ── AUDIO START OVERLAY ── */
+  #audio-start {
+    position:absolute; inset:0;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    background:#000000ee; z-index:100; pointer-events:all;
+    font-family:'Rajdhani',sans-serif;
+  }
+  #audio-start h1 { font-size:52px; font-weight:700; letter-spacing:12px; color:var(--accent); text-shadow:0 0 40px var(--accent); }
+  #audio-start p  { font-size:13px; letter-spacing:5px; color:#fff6; margin-top:10px; font-family:'Share Tech Mono',monospace; }
+  #audio-start button {
+    margin-top:32px; padding:14px 44px; border:1px solid var(--accent);
+    background:transparent; color:var(--accent); font-family:'Share Tech Mono',monospace;
+    font-size:13px; letter-spacing:5px; cursor:pointer; transition:background .2s, color .2s;
+  }
+  #audio-start button:hover { background:var(--accent); color:#000; }
+  #mute-badge { position:absolute; top:68px; right:28px; font-size:9px; letter-spacing:4px; color:#fff4; display:none; }
+  #mute-badge.show { display:block; }
+
+  /* corners */
+  .c { position:absolute; width:14px; height:14px; }
+  .c.tl { top:6px;  left:6px;  border-top:1px solid var(--accent); border-left:1px solid var(--accent); }
+  .c.tr { top:6px;  right:6px; border-top:1px solid var(--accent); border-right:1px solid var(--accent); }
+  .c.bl { bottom:6px; left:6px;  border-bottom:1px solid var(--accent); border-left:1px solid var(--accent); }
+  .c.br { bottom:6px; right:6px; border-bottom:1px solid var(--accent); border-right:1px solid var(--accent); }
+
+  /* ── BOOST METER ── */
+  #boost-panel {
+    position:absolute; bottom:28px; left:50%; transform:translateX(-50%);
+    display:flex; flex-direction:column; align-items:center; gap:6px;
+    pointer-events:none;
+  }
+  #boost-label { font-size:8px; letter-spacing:5px; opacity:.4; margin-bottom:2px; }
+  #boost-bar-outer {
+    width:180px; height:8px;
+    background:#ffffff0a; border:1px solid #ffffff18; border-radius:1px;
+    overflow:hidden;
+  }
+  #boost-bar-fill {
+    height:100%; width:100%;
+    background:linear-gradient(90deg,#ff6600,#ffcc00,#ffffff);
+    border-radius:1px;
+    box-shadow:0 0 10px #ff880088;
+    transform-origin:left center;
+    transition:transform .08s linear;
+  }
+  #boost-charges {
+    display:flex; gap:5px;
+  }
+  .boost-pip {
+    width:8px; height:8px; border-radius:50%;
+    background:#ff6600; box-shadow:0 0 6px #ff6600;
+    transition:all .2s;
+  }
+  .boost-pip.empty { background:#ffffff15; box-shadow:none; }
+
+  /* BOOST FLASH */
+  #boost-flash {
+    position:absolute; inset:0;
+    background:radial-gradient(ellipse at 50% 60%, #ff880022 0%, transparent 70%);
+    opacity:0; pointer-events:none;
+    transition:opacity .05s;
+  }
+  #boost-flash.active { opacity:1; }
+
+  /* BOOST ACTIVE LABEL */
+  #boost-active {
+    position:absolute; top:42%; left:50%; transform:translate(-50%,-50%);
+    font-family:'Rajdhani',sans-serif; font-size:28px; font-weight:700;
+    letter-spacing:10px; color:#ff8800;
+    text-shadow:0 0 30px #ff8800, 0 0 60px #ff440055;
+    opacity:0; transition:opacity .1s; pointer-events:none;
+  }
+  #boost-active.show { opacity:1; }
+
+  /* ── HANDBRAKE INDICATOR ── */
+  #hb-indicator {
+    position:absolute; top:42%; left:50%; transform:translate(-50%,-50%);
+    font-family:'Rajdhani',sans-serif; font-size:22px; font-weight:700;
+    letter-spacing:8px; color:#ff3020;
+    text-shadow:0 0 24px #ff302088;
+    opacity:0; transition:opacity .1s; pointer-events:none;
+    margin-top:40px;
+  }
+  #hb-indicator.show { opacity:1; }
+
+  /* ── STUNT HUD ── */
+  #stunt-score {
+    position:absolute; top:22%; left:50%; transform:translateX(-50%);
+    font-family:'Rajdhani',sans-serif; font-weight:700; font-size:48px;
+    letter-spacing:6px; color:#fff; text-align:center;
+    text-shadow:0 0 30px #ffcc00, 0 0 60px #ff880088;
+    pointer-events:none; opacity:0; transition:opacity .15s;
+  }
+  #stunt-score.show { opacity:1; }
+  #stunt-trick {
+    position:absolute; top:30%; left:50%; transform:translateX(-50%);
+    font-family:'Share Tech Mono',monospace; font-size:13px; letter-spacing:5px;
+    color:#ffcc00; text-align:center; text-shadow:0 0 18px #ffcc00aa;
+    pointer-events:none; opacity:0; transition:opacity .1s;
+  }
+  #stunt-trick.show { opacity:1; }
+  #stunt-total {
+    position:absolute; top:18px; left:50%; transform:translateX(-50%);
+    font-family:'Rajdhani',sans-serif; font-size:18px; font-weight:700;
+    letter-spacing:6px; color:#ffcc00; opacity:0.7;
+    text-shadow:0 0 12px #ffcc0066; pointer-events:none;
+  }
+  #air-indicator {
+    position:absolute; bottom:110px; left:50%; transform:translateX(-50%);
+    font-family:'Share Tech Mono',monospace; font-size:9px; letter-spacing:4px;
+    color:#00ffcc; opacity:0; transition:opacity .1s; text-align:center;
+  }
+  #air-indicator.show { opacity:0.7; }
+
+  /* ── TOUCH CONTROLS ── */
+  #touch-controls {
+    display: none;
+    position: fixed; inset: 0; z-index: 50;
+    pointer-events: none;
+    user-select: none; -webkit-user-select: none;
+  }
+  body.is-mobile #touch-controls { display: block; }
+  body.is-mobile #controls-hint { display: none; }
+  body.is-mobile #minimap { left: 10px; bottom: 10px; width:90px; height:90px; }
+  body.is-mobile #minimap canvas { width:90px; height:90px; }
+  body.is-mobile #left { display: none; }
+  body.is-mobile #speed-cluster { bottom: 10px; right: 10px; padding: 8px 12px; min-width: 110px; }
+  body.is-mobile #spd { font-size: 48px; }
+  body.is-mobile #rpm-wrap { display: none; }
+  body.is-mobile #boost-panel { bottom: 10px; }
+
+  /* Joystick zone — left side */
+  #joy-zone {
+    position: absolute; left: 0; bottom: 0;
+    width: 50%; height: 55%;
+    pointer-events: all;
+  }
+  #joy-base {
+    position: absolute;
+    width: 110px; height: 110px; border-radius: 50%;
+    border: 2px solid #ffffff22;
+    background: #ffffff08;
+    transform: translate(-50%, -50%);
+    display: none;
+  }
+  #joy-knob {
+    position: absolute;
+    width: 48px; height: 48px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #ffffffcc, #ffffff44);
+    border: 2px solid #ffffff88;
+    box-shadow: 0 0 14px #ffffff44;
+    transform: translate(-50%, -50%);
+    display: none;
+  }
+
+  /* Action buttons — right side */
+  #action-btns {
+    position: absolute; right: 16px; bottom: 140px;
+    display: flex; flex-direction: column; gap: 10px;
+    align-items: flex-end;
+    pointer-events: all;
+  }
+  #btn-row-1 { display: flex; gap: 10px; }
+  #btn-row-2 { display: flex; gap: 10px; }
+
+  .touch-btn {
+    pointer-events: all;
+    width: 64px; height: 64px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px; letter-spacing: 1px;
+    border: 2px solid; text-align: center; line-height: 1.2;
+    background: #00000088; backdrop-filter: blur(4px);
+    -webkit-tap-highlight-color: transparent;
+    touch-action: none;
+    transition: background 0.08s, transform 0.08s;
+    cursor: pointer;
+  }
+  .touch-btn:active, .touch-btn.pressed {
+    transform: scale(0.9);
+  }
+  #btn-gas   { border-color: #e8ff0088; color: #e8ff00; font-size:11px; font-weight:700; }
+  #btn-gas.pressed   { background: #e8ff0055; }
+  #btn-brake { border-color: #ff302088; color: #ff3020; font-size:11px; font-weight:700; }
+  #btn-brake.pressed { background: #ff302055; }
+  #btn-nos   { border-color: #ff880088; color: #ff8800; }
+  #btn-nos.pressed   { background: #ff880055; }
+  #btn-hb    { border-color: #ff302055; color: #ff8888; }
+  #btn-hb.pressed    { background: #ff302044; }
+  #btn-horn  { border-color: #ffffff33; color: #ffffffaa; }
+  #btn-reset { border-color: #ffffff22; color: #ffffff66; font-size:9px; }
+
+  /* Throttle / brake as large vertical strip on far right */
+  #gas-brake-zone {
+    position: absolute; right: 0; bottom: 0;
+    width: 50%; height: 55%;
+    pointer-events: none; /* individual btns handle it */
+  }
+
+  /* Top-right mobile buttons (map, mute) */
+  #mobile-top-btns {
+    position: absolute; top: 12px; right: 12px;
+    display: flex; gap: 8px;
+    pointer-events: all;
+  }
+  .touch-btn-sm {
+    pointer-events: all;
+    width: 44px; height: 44px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Share Tech Mono', monospace; font-size: 9px;
+    letter-spacing: 1px; border: 1px solid #ffffff22;
+    background: #00000088; color: #ffffff66;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation; cursor: pointer;
+    transition: background 0.08s;
+  }
+  .touch-btn-sm:active { background: #ffffff22; }
+</style>
+</head>
+<body>
+<div id="hud">
+  <div class="c tl"></div><div class="c tr"></div><div class="c bl"></div><div class="c br"></div>
+
+  <div id="topbar">
+    <div id="logo">APEX CRASH<span>BOOST · HANDBRAKE · AUDIO PHYSICS</span></div>
+    <div id="controls-hint">
+      W/S — THROTTLE/BRAKE &nbsp; A/D — STEER<br>
+      <span style="color:#ff8800cc">F — NITROUS</span> &nbsp; <span style="color:#ff4400cc">SHIFT — BOOSTER</span> &nbsp; <span style="color:#ff3020cc">SPACE — HANDBRAKE</span><br>
+      <span style="color:#ffcc00cc">IN AIR: Q/E — ROLL &nbsp; W/S — FLIP</span> &nbsp; R — RESET &nbsp; M — MATH &nbsp; <span style="color:#ffffffcc">H — HORN</span>
+    </div>
+  </div>
+
+  <div id="roll-warn">⚠ ROLLOVER RISK</div>
+  <div id="boost-flash"></div>
+  <div id="boost-active">⚡ NITROUS</div>
+  <div id="shift-boost-flash" style="position:absolute;inset:0;background:radial-gradient(ellipse at 50% 60%,#ff440022 0%,transparent 70%);opacity:0;pointer-events:none;transition:opacity .05s;"></div>
+  <div id="shift-boost-label" style="position:absolute;top:36%;left:50%;transform:translate(-50%,-50%);font-family:'Rajdhani',sans-serif;font-size:28px;font-weight:700;letter-spacing:10px;color:#ff4400;text-shadow:0 0 30px #ff4400,0 0 60px #ff220055;opacity:0;transition:opacity .1s;pointer-events:none;">⚡ BOOST</div>
+  <div id="hb-indicator" style="margin-top:44px">🔒 HANDBRAKE</div>
+
+  <!-- STUNT HUD -->
+  <div id="stunt-score"></div>
+  <div id="stunt-trick"></div>
+  <div id="stunt-total">SCORE: 0</div>
+  <div id="air-indicator">Q/E ROLL · W/S FLIP</div>
+
+  <!-- BOOST METER -->
+  <div id="boost-panel">
+    <div id="boost-label">NITROUS</div>
+    <div id="boost-bar-outer"><div id="boost-bar-fill"></div></div>
+    <div id="boost-charges">
+      <div class="boost-pip" id="bp0"></div>
+      <div class="boost-pip" id="bp1"></div>
+      <div class="boost-pip" id="bp2"></div>
+    </div>
+  </div>
+
+  <div id="left">
+    <div class="sr"><span class="sl">GEAR</span><span class="sv" id="gear-v">N</span></div>
+    <div class="sr"><span class="sl">G-LAT</span><span class="sv" id="glat-v">0.0g</span></div>
+    <div class="sr"><span class="sl">SLIP°</span><span class="sv" id="slip-v">0°</span></div>
+    <div class="sr"><span class="sl">ROLL°</span><span class="sv" id="roll-v">0°</span></div>
+    <div class="sr"><span class="sl">IMPACT</span><span class="sv" id="imp-v">— m/s</span></div>
+    <div class="sr" style="border-top:1px solid #ffffff0f;padding-top:7px;margin-top:3px">
+      <span class="sl">NOS FORCE</span><span class="sv" id="nos-v" style="color:#ff8800">— N</span>
+    </div>
+    <div class="sr">
+      <span class="sl">HB SLIP</span><span class="sv" id="hbslip-v" style="color:#ff3020">0°</span>
+    </div>
+  </div>
+
+  <div id="rpm-wrap">
+    <svg width="250" height="72" viewBox="0 0 250 72">
+      <path d="M15 68 A105 105 0 0 1 235 68" fill="none" stroke="#fff1" stroke-width="4" stroke-linecap="round"/>
+      <path id="rpm-arc" d="M15 68 A105 105 0 0 1 235 68" fill="none" stroke="#e8ff00" stroke-width="4"
+            stroke-linecap="round" stroke-dasharray="330" stroke-dashoffset="330"
+            style="transition:stroke-dashoffset .05s;filter:drop-shadow(0 0 5px #e8ff00)"/>
+      <path d="M192 26 A105 105 0 0 1 235 68" fill="none" stroke="#ff330030" stroke-width="4" stroke-linecap="round"/>
+      <text x="125" y="18" fill="#fff3" font-size="8" text-anchor="middle" font-family="Share Tech Mono" letter-spacing="3">RPM</text>
+      <text id="rpm-txt" x="125" y="34" fill="#fff8" font-size="12" text-anchor="middle" font-family="Share Tech Mono">800</text>
+    </svg>
+  </div>
+
+  <div id="speed-cluster">
+    <div id="spd">0</div>
+    <div id="spd-unit">KM/H</div>
+    <div class="bar-lbl">THROTTLE</div>
+    <div class="bar"><div class="bar-fill" id="t-fill" style="width:0%"></div></div>
+    <div class="bar-lbl">BRAKE</div>
+    <div class="bar"><div class="bar-fill" id="b-fill" style="width:0%"></div></div>
+  </div>
+
+  <!-- MATH PANEL -->
+  <!-- FULL SCREEN MAP OVERLAY (toggle M) -->
+  <div id="map-panel">
+    <div id="map-title">▸ 3D CITY MAP</div>
+    <div id="map-canvas-wrap">
+      <canvas id="map-canvas" width="700" height="580"></canvas>
+      <!-- HUD overlay labels drawn on top -->
+      <canvas id="map-hud-canvas" width="700" height="580" style="position:absolute;top:0;left:0;pointer-events:none;"></canvas>
+    </div>
+    <div id="map-coords">X: <span id="map-cx">0</span> &nbsp; Z: <span id="map-cz">0</span> &nbsp; | &nbsp; SPEED: <span id="map-spd">0</span> km/h &nbsp; | &nbsp; <span style="color:#e8ff0088;font-size:8px">SCROLL TO ZOOM · DRAG TO ORBIT</span></div>
+    <div id="map-close-hint">[ M ] CLOSE MAP</div>
+  </div>
+
+  <!-- MINIMAP (always visible) -->
+  <div id="minimap">
+    <canvas id="minimap-canvas" width="120" height="120"></canvas>
+  </div>
+
+  <!-- CRASH OVERLAY -->
+  <div id="crash-overlay">
+    <div id="crash-title">CRASHED</div>
+    <div id="crash-sub">SIMULATION TERMINATED</div>
+    <div id="crash-stats">
+      Impact Speed: <span id="cs-spd">—</span> km/h<br>
+      Peak G-Force: <span id="cs-g">—</span> g<br>
+      Energy Dissipated: <span id="cs-ke">—</span> kJ<br>
+      Cause: <span id="cs-cause">—</span>
+    </div>
+    <button id="reset-btn" onclick="resetCar()">[ RESTART ]</button>
+  </div>
+
+  <!-- AUDIO START OVERLAY (browser requires user gesture before AudioContext) -->
+  <div id="audio-start">
+    <h1>APEX CRASH</h1>
+    <p>PROCEDURAL AUDIO ENGINE · WEB AUDIO API</p>
+    <button onclick="startAudio()">[ START ENGINE ]</button>
+  </div>
+  <div id="mute-badge">◼ MUTED</div>
+
+  <!-- ── TOUCH CONTROLS (mobile only) ── -->
+  <div id="touch-controls">
+    <!-- Joystick zone: left half of screen -->
+    <div id="joy-zone">
+      <div id="joy-base"></div>
+      <div id="joy-knob"></div>
+    </div>
+
+    <!-- Action buttons: right side -->
+    <div id="action-btns">
+      <div id="btn-row-1">
+        <div class="touch-btn" id="btn-nos">⚡<br>NOS</div>
+        <div class="touch-btn" id="btn-hb">🔒<br>HB</div>
+        <div class="touch-btn" id="btn-horn">📯<br>HORN</div>
+      </div>
+      <div id="btn-row-2">
+        <div class="touch-btn" id="btn-gas">GAS</div>
+        <div class="touch-btn" id="btn-brake">BRAKE</div>
+        <div class="touch-btn" id="btn-reset">RESET</div>
+      </div>
+    </div>
+
+    <!-- Top-right: map + mute -->
+    <div id="mobile-top-btns">
+      <div class="touch-btn-sm" id="btn-map">MAP</div>
+      <div class="touch-btn-sm" id="btn-mute">SFX</div>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+'use strict';
+// ═══════════════════════════════════════════════════════════════
+//  APEX CRASH — Rigid Body Dynamics with Crash/Rollover Physics
+//
+//  Mathematical systems implemented:
+//  1. Rollover: Static Stability Factor, tipping moment calculus
+//  2. Crash impulse: Impulse-momentum theorem, coefficient of restitution
+//  3. Tumble: Euler angle integration, moment of inertia tensor
+//  4. Debris: Projectile kinematics under gravity (y = y0+v0t-½gt²)
+//  5. Crumple: Energy dissipation via Hertzian contact model
+//  6. Oscillation: Damped harmonic motion for post-crash settle
+// ═══════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════
+//  WEB AUDIO ENGINE — Fully Procedural, Zero External Files
+//
+//  All sounds synthesized in real-time using Web Audio API:
+//
+//  ENGINE:
+//    Base tone  = sawtooth oscillator at f(RPM)
+//    Harmonics  = osc × 2, × 3  (engine character)
+//    Distortion = WaveShaper curve (sigmoid): y = x / (1 + |x|)
+//    Lowpass    = BiquadFilter tracking RPM (cutoff opens with throttle)
+//    Gain ramp  = throttle × speed-factor → smooth fade
+//
+//  TIRE SQUEAL:
+//    Source  = AudioBuffer filled with Math.random() (white noise)
+//    Filter  = BandpassFilter at ~800 Hz, Q=18 (focused squeal)
+//    Gate    = GainNode driven by slip-angle magnitude
+//
+//  HANDBRAKE SCREECH:
+//    Same noise source → narrow bandpass at 1200 Hz, Q=30
+//    Extra distortion on filter output
+//
+//  NOS HISS:
+//    White noise → highpass 2kHz (hiss character)
+//    Low rumble  → sawtooth 60 Hz → lowpass 200Hz
+//    Both gated by nosActive state with smooth ADSR
+//
+//  CRASH BANG:
+//    White noise burst → exponential gain decay: g(t) = A·e^{-t/τ}
+//    τ = impact-speed dependent (harder = longer rumble)
+//    Followed by pitch-descending tone (metal resonance)
+//
+//  GEAR SHIFT CLICK:
+//    Very short (30ms) sine burst at 220 Hz — transient
+//
+//  ROLLOVER SCRAPE:
+//    Bandpass noise 300 Hz, moderate Q, sustained during tumble
+// ═══════════════════════════════════════════════════════════════
+
+// ─── AUDIO SYSTEM ─────────────────────────────────────────────
+let audioCtx = null;
+let audioMuted = false;
+let audioReady = false;
+
+// Node references kept alive for real-time param manipulation
+const AUD = {
+  // Engine
+  engOsc1: null, engOsc2: null, engOsc3: null,
+  engShaper: null, engFilter: null, engGain: null, engMaster: null,
+  // Idle thump (low-frequency pulse)
+  idleOsc: null, idleGain: null,
+  // Tires
+  noiseBuffer: null,
+  tireSource: null, tireFilter: null, tireGain: null,
+  // Handbrake screech
+  hbSource: null, hbFilter: null, hbGain: null,
+  // NOS hiss
+  nosHissSource: null, nosHissFilter: null, nosHissGain: null,
+  nosRumbleOsc: null,  nosRumbleGain: null,
+  // Scrape (rollover)
+  scrapeSource: null, scrapeFilter: null, scrapeGain: null,
+  // Master
+  masterGain: null,
+  // State tracking
+  lastGear: 1,
+};
+
+// ── Distortion curve: sigmoid waveshaper ──────────────────────
+// y = k·x / (1 + |k·x|)  — soft clip, adds harmonic richness
+// More aggressive = more midrange buzz (like high-revving engine)
+function makeDistortionCurve(amount = 80) {
+  const n = 256, curve = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const x = (i * 2) / n - 1;
+    curve[i] = (Math.PI + amount) * x / (Math.PI + amount * Math.abs(x));
+  }
+  return curve;
+}
+
+// ── White noise buffer (2s, reused) ───────────────────────────
+function makeNoiseBuffer(ctx) {
+  const buf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  return buf;
+}
+
+// ── Looping noise source from buffer ──────────────────────────
+function makeNoiseSource(ctx, buffer) {
+  const src = ctx.createBufferSource();
+  src.buffer = buffer; src.loop = true;
+  return src;
+}
+
+function startAudio() {
+  document.getElementById('audio-start').style.display = 'none';
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  audioReady = true;
+
+  const ctx = audioCtx;
+  const now = ctx.currentTime;
+
+  // ── MASTER GAIN ───────────────────────────────────────────
+  AUD.masterGain = ctx.createGain();
+  AUD.masterGain.gain.setValueAtTime(1.0, now);
+  AUD.masterGain.connect(ctx.destination);
+
+  // ── NOISE BUFFER (shared) ─────────────────────────────────
+  AUD.noiseBuffer = makeNoiseBuffer(ctx);
+
+  // ═══════════════════════════
+  //  ENGINE SOUND GRAPH:
+  //  Osc1(saw) ─┐
+  //  Osc2(saw) ─┼──► WaveShaper ──► BiquadLowpass ──► EngGain ──► Master
+  //  Osc3(saw) ─┘
+  //  IdleOsc(sin, 60Hz) ──► IdleGain ──► Master
+  // ═══════════════════════════
+  AUD.engMaster = ctx.createGain();
+  AUD.engMaster.gain.setValueAtTime(0.0, now);
+  AUD.engMaster.connect(AUD.masterGain);
+
+  // Wave shaper for harmonic distortion
+  AUD.engShaper = ctx.createWaveShaper();
+  AUD.engShaper.curve = makeDistortionCurve(60);
+  AUD.engShaper.oversample = '4x';
+  AUD.engShaper.connect(AUD.engMaster);
+
+  // Lowpass filter — cutoff tracks RPM
+  AUD.engFilter = ctx.createBiquadFilter();
+  AUD.engFilter.type = 'lowpass';
+  AUD.engFilter.frequency.setValueAtTime(400, now);
+  AUD.engFilter.Q.setValueAtTime(1.2, now);
+  AUD.engFilter.connect(AUD.engShaper);
+
+  // Oscillators — fundamental + 2nd + 3rd harmonic
+  // Engine fundamental frequency: f = RPM/60 * (cylinders/2) * 0.5
+  // For V6-like: f ≈ RPM / 40  → at 800RPM: 20Hz, at 7200RPM: 180Hz
+  AUD.engOsc1 = ctx.createOscillator(); AUD.engOsc1.type = 'sawtooth';
+  AUD.engOsc2 = ctx.createOscillator(); AUD.engOsc2.type = 'sawtooth';
+  AUD.engOsc3 = ctx.createOscillator(); AUD.engOsc3.type = 'square';
+
+  // Gain stages to blend harmonics
+  const h1g = ctx.createGain(); h1g.gain.setValueAtTime(0.5, now);
+  const h2g = ctx.createGain(); h2g.gain.setValueAtTime(0.25, now);
+  const h3g = ctx.createGain(); h3g.gain.setValueAtTime(0.12, now);
+
+  AUD.engOsc1.connect(h1g); h1g.connect(AUD.engFilter);
+  AUD.engOsc2.connect(h2g); h2g.connect(AUD.engFilter);
+  AUD.engOsc3.connect(h3g); h3g.connect(AUD.engFilter);
+
+  AUD.engOsc1.frequency.setValueAtTime(20, now);
+  AUD.engOsc2.frequency.setValueAtTime(40, now); // 2nd harmonic
+  AUD.engOsc3.frequency.setValueAtTime(60, now); // 3rd harmonic
+
+  AUD.engOsc1.start(); AUD.engOsc2.start(); AUD.engOsc3.start();
+
+  // Idle sub-thump (very low, felt more than heard)
+  AUD.idleOsc = ctx.createOscillator(); AUD.idleOsc.type = 'sine';
+  AUD.idleOsc.frequency.setValueAtTime(28, now);
+  AUD.idleGain = ctx.createGain(); AUD.idleGain.gain.setValueAtTime(0.0, now);
+  AUD.idleOsc.connect(AUD.idleGain); AUD.idleGain.connect(AUD.masterGain);
+  AUD.idleOsc.start();
+
+  // ═══════════════════════════
+  //  TIRE SQUEAL:
+  //  NoiseBuffer ──► BandpassFilter(800Hz,Q18) ──► TireGain ──► Master
+  // ═══════════════════════════
+  AUD.tireSource = makeNoiseSource(ctx, AUD.noiseBuffer);
+  AUD.tireFilter = ctx.createBiquadFilter();
+  AUD.tireFilter.type = 'bandpass';
+  AUD.tireFilter.frequency.setValueAtTime(800, now);
+  AUD.tireFilter.Q.setValueAtTime(18, now);
+  AUD.tireGain = ctx.createGain();
+  AUD.tireGain.gain.setValueAtTime(0.0, now);
+  AUD.tireSource.connect(AUD.tireFilter);
+  AUD.tireFilter.connect(AUD.tireGain);
+  AUD.tireGain.connect(AUD.masterGain);
+  AUD.tireSource.start();
+
+  // ═══════════════════════════
+  //  HANDBRAKE SCREECH:
+  //  Noise ──► BandpassFilter(1300Hz,Q30) ──► HBGain ──► Master
+  // ═══════════════════════════
+  AUD.hbSource = makeNoiseSource(ctx, AUD.noiseBuffer);
+  AUD.hbFilter = ctx.createBiquadFilter();
+  AUD.hbFilter.type = 'bandpass';
+  AUD.hbFilter.frequency.setValueAtTime(1300, now);
+  AUD.hbFilter.Q.setValueAtTime(30, now);
+  AUD.hbGain = ctx.createGain();
+  AUD.hbGain.gain.setValueAtTime(0.0, now);
+  AUD.hbSource.connect(AUD.hbFilter);
+  AUD.hbFilter.connect(AUD.hbGain);
+  AUD.hbGain.connect(AUD.masterGain);
+  AUD.hbSource.start();
+
+  // ═══════════════════════════
+  //  NOS SOUNDS:
+  //  NosHiss: Noise ──► Highpass(2500Hz) ──► NosHissGain ──► Master
+  //  NosRumble: Osc(55Hz,sawtooth) ──► Lowpass(180Hz) ──► NosRumbleGain ──► Master
+  // ═══════════════════════════
+  AUD.nosHissSource = makeNoiseSource(ctx, AUD.noiseBuffer);
+  AUD.nosHissFilter = ctx.createBiquadFilter();
+  AUD.nosHissFilter.type = 'highpass';
+  AUD.nosHissFilter.frequency.setValueAtTime(2500, now);
+  AUD.nosHissGain = ctx.createGain(); AUD.nosHissGain.gain.setValueAtTime(0.0, now);
+  AUD.nosHissSource.connect(AUD.nosHissFilter);
+  AUD.nosHissFilter.connect(AUD.nosHissGain);
+  AUD.nosHissGain.connect(AUD.masterGain);
+  AUD.nosHissSource.start();
+
+  AUD.nosRumbleOsc = ctx.createOscillator(); AUD.nosRumbleOsc.type = 'sawtooth';
+  AUD.nosRumbleOsc.frequency.setValueAtTime(55, now);
+  const nosRumbleLPF = ctx.createBiquadFilter();
+  nosRumbleLPF.type = 'lowpass'; nosRumbleLPF.frequency.setValueAtTime(180, now);
+  AUD.nosRumbleGain = ctx.createGain(); AUD.nosRumbleGain.gain.setValueAtTime(0.0, now);
+  AUD.nosRumbleOsc.connect(nosRumbleLPF);
+  nosRumbleLPF.connect(AUD.nosRumbleGain);
+  AUD.nosRumbleGain.connect(AUD.masterGain);
+  AUD.nosRumbleOsc.start();
+
+  // ═══════════════════════════
+  //  ROLLOVER SCRAPE:
+  //  Noise ──► BandpassFilter(320Hz,Q8) ──► ScrapeGain ──► Master
+  // ═══════════════════════════
+  AUD.scrapeSource = makeNoiseSource(ctx, AUD.noiseBuffer);
+  AUD.scrapeFilter = ctx.createBiquadFilter();
+  AUD.scrapeFilter.type = 'bandpass';
+  AUD.scrapeFilter.frequency.setValueAtTime(320, now);
+  AUD.scrapeFilter.Q.setValueAtTime(8, now);
+  AUD.scrapeGain = ctx.createGain(); AUD.scrapeGain.gain.setValueAtTime(0.0, now);
+  AUD.scrapeSource.connect(AUD.scrapeFilter);
+  AUD.scrapeFilter.connect(AUD.scrapeGain);
+  AUD.scrapeGain.connect(AUD.masterGain);
+  AUD.scrapeSource.start();
+}
+
+// ── One-shot bang (crash / gear click / collision) ────────────
+// Envelope: gain(t) = A · e^{-t/τ}  (exponential decay)
+// τ maps to impactSpeed: harder = longer rumble
+function playBang(impactSpeed = 20, pitchHz = 90) {
+  if (!audioReady || audioMuted) return;
+  const ctx = audioCtx, now = ctx.currentTime;
+
+  // Noise burst
+  const nSrc = makeNoiseSource(ctx, AUD.noiseBuffer);
+  const nFilt = ctx.createBiquadFilter();
+  nFilt.type = 'lowpass';
+  nFilt.frequency.setValueAtTime(Math.min(2000, 300 + impactSpeed * 30), now);
+  const nGain = ctx.createGain();
+  // A · e^{-t/τ}: A = volume, τ = impact/20 seconds
+  const A = Math.min(1.5, 0.3 + impactSpeed / 25);
+  const tau = Math.max(0.15, impactSpeed / 30);
+  nGain.gain.setValueAtTime(A, now);
+  nGain.gain.exponentialRampToValueAtTime(0.001, now + tau * 3);
+  nSrc.connect(nFilt); nFilt.connect(nGain); nGain.connect(AUD.masterGain);
+  nSrc.start(now); nSrc.stop(now + tau * 3 + 0.1);
+
+  // Metal resonance tone — pitch falls: f(t) = f0 · e^{-t/τ_pitch}
+  // Implemented as oscillator with exponential freq ramp down
+  const resOsc = ctx.createOscillator(); resOsc.type = 'sine';
+  resOsc.frequency.setValueAtTime(pitchHz, now);
+  resOsc.frequency.exponentialRampToValueAtTime(pitchHz * 0.2, now + tau * 2);
+  const resGain = ctx.createGain();
+  resGain.gain.setValueAtTime(A * 0.4, now);
+  resGain.gain.exponentialRampToValueAtTime(0.001, now + tau * 2);
+  resOsc.connect(resGain); resGain.connect(AUD.masterGain);
+  resOsc.start(now); resOsc.stop(now + tau * 2 + 0.05);
+}
+
+// ── Gear shift click ──────────────────────────────────────────
+// 30ms sine transient at 200Hz — mimics mechanical clunk
+function playGearClick() {
+  if (!audioReady || audioMuted) return;
+  const ctx = audioCtx, now = ctx.currentTime;
+  const osc = ctx.createOscillator(); osc.type = 'sine';
+  osc.frequency.setValueAtTime(200, now);
+  osc.frequency.linearRampToValueAtTime(80, now + 0.03);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.18, now);
+  g.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+  osc.connect(g); g.connect(AUD.masterGain);
+  osc.start(now); osc.stop(now + 0.07);
+}
+
+// ── NOS ignition pop ──────────────────────────────────────────
+// Quick pressure-release pop at ignition
+function playNOSpop() {
+  if (!audioReady || audioMuted) return;
+  const ctx = audioCtx, now = ctx.currentTime;
+  const osc = ctx.createOscillator(); osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(120, now);
+  osc.frequency.exponentialRampToValueAtTime(40, now + 0.12);
+  const dist = ctx.createWaveShaper();
+  dist.curve = makeDistortionCurve(200);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.6, now);
+  g.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+  osc.connect(dist); dist.connect(g); g.connect(AUD.masterGain);
+  osc.start(now); osc.stop(now + 0.2);
+}
+
+// ── Update audio each frame ───────────────────────────────────
+function updateAudio(dt) {
+  if (!audioReady || audioMuted) return;
+  const ctx = audioCtx, now = ctx.currentTime;
+  const smoothT = 0.04; // param smoothing (seconds) — avoids zipper noise
+
+  // ── ENGINE FREQUENCY ─────────────────────────────────────
+  // f_engine = RPM / 40  (maps 800→20Hz, 7200→180Hz)
+  // f_osc2 = 2 × f  (2nd harmonic), f_osc3 = 3 × f (3rd)
+  const f1 = S.rpm / 40;
+  AUD.engOsc1.frequency.setTargetAtTime(f1,      now, smoothT);
+  AUD.engOsc2.frequency.setTargetAtTime(f1 * 2,  now, smoothT);
+  AUD.engOsc3.frequency.setTargetAtTime(f1 * 2.97, now, smoothT); // slightly detuned for texture
+
+  // Filter cutoff opens with throttle and RPM
+  // cutoff(rpm, throttle) = 300 + throttle×1200 + (rpm/7200)×800
+  const cutoff = 300 + S.throttle * 1200 + (S.rpm / 7200) * 800;
+  AUD.engFilter.frequency.setTargetAtTime(cutoff, now, smoothT);
+
+  // Engine gain: idle + throttle envelope
+  // g_eng = 0.06 (idle) + throttle×0.3 + speed×0.05 — smoothed
+  const speedFac = Math.min(1, Math.abs(S.vLong) / 30);
+  const engGainTarget = S.crashed ? 0 : (0.06 + S.throttle * 0.30 + speedFac * 0.06);
+  AUD.engMaster.gain.setTargetAtTime(engGainTarget, now, smoothT * 0.5);
+
+  // Idle sub-thump scales inversely with speed (felt at idle)
+  AUD.idleGain.gain.setTargetAtTime(
+    S.crashed ? 0 : Math.max(0, 0.18 * (1 - speedFac * 0.8)) * (0.7 + 0.3 * S.throttle),
+    now, smoothT
+  );
+
+  // ── TIRE SQUEAL ───────────────────────────────────────────
+  // Squeal amplitude = clip(|α| / α_max, 0, 1)² × speed_factor
+  // α_max ≈ 0.35 rad; squeal only meaningful above ~20 km/h
+  const slipDeg = Math.abs(S.slipAngle);
+  const slipFrac = Math.min(1, slipDeg / 0.3);
+  const kmh = Math.abs(S.vLong * 3.6);
+  const tireSquealGain = !S.crashed && kmh > 15
+    ? slipFrac * slipFrac * Math.min(1, (kmh - 15) / 30) * 0.55
+    : 0;
+  AUD.tireGain.gain.setTargetAtTime(tireSquealGain, now, smoothT);
+  // Squeal pitch rises with slip (narrow bandpass drifts up)
+  AUD.tireFilter.frequency.setTargetAtTime(700 + slipFrac * 600, now, smoothT * 2);
+
+  // ── HANDBRAKE SCREECH ─────────────────────────────────────
+  // Gate: active only when handbrake + speed > threshold
+  const hbScreechGain = S.handbrakeActive && kmh > 8 && !S.crashed
+    ? Math.min(1, (kmh - 8) / 25) * 0.7
+    : 0;
+  AUD.hbGain.gain.setTargetAtTime(hbScreechGain, now, 0.02);
+
+  // ── NOS SOUNDS ────────────────────────────────────────────
+  const nosFrac = S.nosActive ? Math.max(0.1, S.nosDuration / P.nosDuration) : 0;
+  AUD.nosHissGain.gain.setTargetAtTime(nosFrac * 0.35, now, 0.03);
+  AUD.nosRumbleGain.gain.setTargetAtTime(nosFrac * 0.28, now, 0.03);
+
+  // ── ROLLOVER / SCRAPE ────────────────────────────────────
+  const scrapeActive = S.inAir && S.pos.y <= WR + 0.15 && Math.abs(S.vertVel) > 0.5;
+  AUD.scrapeGain.gain.setTargetAtTime(
+    scrapeActive ? Math.min(1.0, Math.abs(S.vLong) / 15) * 0.9 : 0,
+    now, 0.05
+  );
+
+  // ── GEAR SHIFT DETECTION ─────────────────────────────────
+  if (S.gear !== AUD.lastGear && !S.crashed) {
+    playGearClick();
+    AUD.lastGear = S.gear;
+  }
+}
+
+// Toggle mute
+function toggleMute() {
+  if (!audioReady) return;
+  audioMuted = !audioMuted;
+  AUD.masterGain.gain.setTargetAtTime(audioMuted ? 0 : 1, audioCtx.currentTime, 0.05);
+  document.getElementById('mute-badge').className = audioMuted ? 'show' : '';
+}
+
+// ─── SCENE ────────────────────────────────────────────────────
+const scene    = new THREE.Scene();
+// ── PBR Renderer ───────────────────────────────────────────────
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.95;
+renderer.outputEncoding = THREE.sRGBEncoding;
+document.body.appendChild(renderer.domElement);
+
+const camera = new THREE.PerspectiveCamera(62, window.innerWidth/window.innerHeight, 0.1, 600);
+
+// ── Procedural gradient sky ─────────────────────────────────────
+const skyDome = new THREE.Mesh(
+  new THREE.SphereGeometry(490, 32, 16),
+  new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    depthWrite: false,
+    uniforms: {},
+    vertexShader: `varying vec3 vPos; void main(){vPos=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
+    fragmentShader: `
+      varying vec3 vPos;
+      void main(){
+        float h=normalize(vPos).y;
+        vec3 zenith=vec3(0.18,0.38,0.72);
+        vec3 mid=vec3(0.52,0.70,0.88);
+        vec3 haze=vec3(0.80,0.80,0.72);
+        float t=clamp(h,0.,1.);
+        vec3 col=mix(haze,mix(mid,zenith,pow(t,.5)),clamp(h*3.,0.,1.));
+        gl_FragColor=vec4(col,1.);
+      }
+    `
+  })
+);
+scene.add(skyDome);
+scene.fog = new THREE.FogExp2(0xb0c8dc, 0.004);
+
+// ── Physically based lighting ───────────────────────────────────
+// Hemisphere: sky blue above, warm earth below (replaces flat ambient)
+const hemi = new THREE.HemisphereLight(0x9bbde8, 0x8a7555, 0.8);
+scene.add(hemi);
+
+// Primary sun — warm golden directional with crisp shadows
+const sun = new THREE.DirectionalLight(0xfff0cc, 3.2);
+sun.position.set(80, 130, 60); sun.castShadow = true;
+sun.shadow.mapSize.set(1024, 1024);
+['left','right','top','bottom'].forEach(k => sun.shadow.camera[k] = (k==='left'||k==='bottom') ? -80 : 80);
+sun.shadow.camera.far = 200;
+sun.shadow.bias = -0.0002;
+sun.shadow.normalBias = 0.05;
+scene.add(sun); scene.add(sun.target);
+
+// Sky fill — cool blue from opposite direction (sky bounce)
+const skyFill = new THREE.DirectionalLight(0x88aadd, 0.4);
+skyFill.position.set(-60, 40, -80); scene.add(skyFill);
+
+
+// ─── GROUND & ROAD SYSTEM ─────────────────────────────────────
+// Base asphalt canvas (1024×1024, tiled)
+const gc = document.createElement('canvas'); gc.width = gc.height = 1024;
+const gx = gc.getContext('2d');
+
+// ── Asphalt base ─────────────────────────────────────────────
+gx.fillStyle = '#0a0a0a'; gx.fillRect(0,0,1024,1024);
+
+// Aggregate texture — random pebbles/grit
+for(let i=0;i<18000;i++){
+  const x=Math.random()*1024, y=Math.random()*1024;
+  const v = 15+Math.random()*20;
+  gx.fillStyle=`rgba(${v},${v},${v-2},${0.3+Math.random()*0.3})`;
+  gx.fillRect(x,y,1+Math.random()*2,1+Math.random()*2);
+}
+
+// Subtle tar-line cracks
+gx.strokeStyle='rgba(30,30,28,0.4)'; gx.lineWidth=1;
+for(let i=0;i<12;i++){
+  gx.beginPath();
+  gx.moveTo(Math.random()*1024,Math.random()*1024);
+  let cx2=Math.random()*1024, cy2=Math.random()*1024;
+  gx.quadraticCurveTo(Math.random()*1024,Math.random()*1024,cx2,cy2);
+  gx.stroke();
+}
+
+// ── Road patches (darker repair squares) ─────────────────────
+for(let i=0;i<8;i++){
+  const px=Math.random()*900+50, py=Math.random()*900+50;
+  const pw=30+Math.random()*60, ph=20+Math.random()*50;
+  gx.fillStyle='rgba(8,8,6,0.8)'; gx.fillRect(px,py,pw,ph);
+  gx.strokeStyle='rgba(60,62,55,0.5)'; gx.lineWidth=1.5; gx.strokeRect(px,py,pw,ph);
+}
+
+// ── Sidewalk strips along edges ───────────────────────────────
+const swW = 90; // sidewalk width in texture pixels
+// All 4 edges
+[[0,0,1024,swW],[0,1024-swW,1024,swW],[0,0,swW,1024],[1024-swW,0,swW,1024]].forEach(([sx,sy,sw,sh])=>{
+  gx.fillStyle='#b0a890'; gx.fillRect(sx,sy,sw,sh);
+  // paving stone grid
+  gx.strokeStyle='rgba(140,130,110,0.8)'; gx.lineWidth=1;
+  const step=32;
+  for(let u=sx;u<sx+sw;u+=step){ gx.beginPath();gx.moveTo(u,sy);gx.lineTo(u,sy+sh);gx.stroke(); }
+  for(let v=sy;v<sy+sh;v+=step){ gx.beginPath();gx.moveTo(sx,v);gx.lineTo(sx+sw,v);gx.stroke(); }
+  // slight tint variation per slab
+  for(let u=sx;u<sx+sw;u+=step) for(let v=sy;v<sy+sh;v+=step){
+    const tone=Math.random()*12-6;
+    gx.fillStyle=`rgba(${155+tone},${148+tone},${128+tone},0.3)`;
+    gx.fillRect(u+1,v+1,step-2,step-2);
+  }
+});
+
+// ── Curb lines (dark edge between road and sidewalk) ──────────
+gx.strokeStyle='#2a2c28'; gx.lineWidth=4;
+gx.strokeRect(swW-2,swW-2,1024-swW*2+4,1024-swW*2+4);
+// Bright curb highlight
+gx.strokeStyle='rgba(200,195,175,0.7)'; gx.lineWidth=2;
+gx.strokeRect(swW+1,swW+1,1024-swW*2-2,1024-swW*2-2);
+
+// ── Lane markings ─────────────────────────────────────────────
+const roadLeft=swW+6, roadRight=1024-swW-6;
+const roadTop=swW+6,  roadBot=1024-swW-6;
+const roadW=roadRight-roadLeft, roadH=roadBot-roadTop;
+const midX=(roadLeft+roadRight)/2, midY=(roadTop+roadBot)/2;
+
+// Center dashed double-yellow line — horizontal
+gx.strokeStyle='#e8d840'; gx.lineWidth=3;
+const dashLen=60, gapLen=40;
+for(let x=roadLeft;x<roadRight;x+=dashLen+gapLen){
+  gx.beginPath(); gx.moveTo(x,midY-3); gx.lineTo(Math.min(x+dashLen,roadRight),midY-3); gx.stroke();
+  gx.beginPath(); gx.moveTo(x,midY+3); gx.lineTo(Math.min(x+dashLen,roadRight),midY+3); gx.stroke();
+}
+// Center dashed double-yellow line — vertical
+for(let y=roadTop;y<roadBot;y+=dashLen+gapLen){
+  gx.beginPath(); gx.moveTo(midX-3,y); gx.lineTo(midX-3,Math.min(y+dashLen,roadBot)); gx.stroke();
+  gx.beginPath(); gx.moveTo(midX+3,y); gx.lineTo(midX+3,Math.min(y+dashLen,roadBot)); gx.stroke();
+}
+
+// White edge lines
+gx.strokeStyle='rgba(240,240,235,0.85)'; gx.lineWidth=3;
+gx.strokeRect(roadLeft+2,roadTop+2,roadW-4,roadH-4);
+
+// Lane divider dashes (quarter and three-quarter positions)
+gx.strokeStyle='rgba(240,240,235,0.6)'; gx.lineWidth=2;
+const quarters=[.25,.75];
+quarters.forEach(q=>{
+  const lx=roadLeft+roadW*q, ly=roadTop+roadH*q;
+  for(let x=roadLeft;x<roadRight;x+=dashLen+gapLen){
+    gx.beginPath(); gx.moveTo(x,ly); gx.lineTo(Math.min(x+dashLen,roadRight),ly); gx.stroke();
+  }
+  for(let y=roadTop;y<roadBot;y+=dashLen+gapLen){
+    gx.beginPath(); gx.moveTo(lx,y); gx.lineTo(lx,Math.min(y+dashLen,roadBot)); gx.stroke();
+  }
+});
+
+// ── Crosswalk stripes near center ─────────────────────────────
+const cwW=80, cwStripes=6, cwStripeW=cwW/cwStripes;
+gx.fillStyle='rgba(240,240,235,0.75)';
+// Horizontal crosswalk
+for(let s=0;s<cwStripes;s+=2) gx.fillRect(midX-cwW/2+s*cwStripeW, midY-45, cwStripeW-3, 28);
+for(let s=0;s<cwStripes;s+=2) gx.fillRect(midX-cwW/2+s*cwStripeW, midY+18, cwStripeW-3, 28);
+// Vertical crosswalk
+for(let s=0;s<cwStripes;s+=2) gx.fillRect(midX-45, midY-cwW/2+s*cwStripeW, 28, cwStripeW-3);
+for(let s=0;s<cwStripes;s+=2) gx.fillRect(midX+18, midY-cwW/2+s*cwStripeW, 28, cwStripeW-3);
+
+// ── Drainage grate marks ──────────────────────────────────────
+[[roadLeft+20,midY],[roadRight-20,midY],[midX,roadTop+20],[midX,roadBot-20]].forEach(([gx2,gy2])=>{
+  gx.strokeStyle='rgba(30,30,28,0.8)'; gx.lineWidth=2;
+  gx.strokeRect(gx2-8,gy2-4,16,8);
+  for(let l=0;l<4;l++){ gx.beginPath();gx.moveTo(gx2-8+l*5,gy2-4);gx.lineTo(gx2-8+l*5,gy2+4);gx.stroke(); }
+});
+
+const gt = new THREE.CanvasTexture(gc);
+gt.wrapS = gt.wrapT = THREE.RepeatWrapping;
+gt.repeat.set(30, 30); // tile over the 3000×3000 world
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(50000,50000),
+  new THREE.MeshLambertMaterial({map:gt})
+);
+ground.rotation.x = -Math.PI/2; ground.receiveShadow = true; scene.add(ground);
+
+// ── Raised kerb meshes around the play area ───────────────────
+// These are real 3D geometry — visible low walls at road edges
+const kerbMat = new THREE.MeshLambertMaterial({color:0xc8c0a8});
+[
+  [0,-5,300,.25,.4],   // top edge
+  [0, 5,300,.25,.4],   // bottom edge
+  [-5,0,.4,.25,300],  // left edge
+  [ 5,0,.4,.25,300],  // right edge
+].forEach(([kx,kz,kw,kh,kd])=>{
+  // repeat scaled kerb lines every ~20 units around perimeter
+});
+
+// ── Road surface detail planes (darker patches, real geometry) ─
+for(let i=0;i<25;i++){
+  const px=(Math.random()-.5)*280, pz=(Math.random()-.5)*280;
+  const pw=4+Math.random()*12, pd=3+Math.random()*8;
+  const patchMat = new THREE.MeshLambertMaterial({color:0x060606});
+  const patch = new THREE.Mesh(new THREE.PlaneGeometry(pw,pd), patchMat);
+  patch.rotation.x=-Math.PI/2; patch.position.set(px,.01,pz);
+  scene.add(patch);
+}
+
+// ── Sidewalk plane (separate elevated layer around the streets) ─
+const swMat = new THREE.MeshLambertMaterial({color:0xb8b0a0});
+// Four sidewalk strips as raised planes
+[
+  [0,-155,300,10],[0,155,300,10],  // N/S
+  [-155,0,10,310],[ 155,0,10,310], // E/W
+].forEach(([sx,sz,sw2,sd])=>{
+  const sw3 = new THREE.Mesh(new THREE.PlaneGeometry(sw2,sd), swMat);
+  sw3.rotation.x=-Math.PI/2; sw3.position.set(sx,.02,sz);
+  sw3.receiveShadow=true; scene.add(sw3);
+});
+
+// ─── STARS ────────────────────────────────────────────────────
+const sb = new THREE.BufferGeometry();
+const sp = new Float32Array(2500*3);
+for(let i=0;i<2500;i++){sp[i*3]=(Math.random()-.5)*1200;sp[i*3+1]=80+Math.random()*250;sp[i*3+2]=(Math.random()-.5)*1200;}
+sb.setAttribute('position',new THREE.BufferAttribute(sp,3));
+// Stars removed — daytime scene
+
+// ─── COLLISION OBJECTS (buildings) ────────────────────────────
+const COLLIDERS = [];
+
+// ── PROCEDURAL BUILDING TEXTURE GENERATOR ─────────────────────
+// Paints a canvas with: base material, window grid, floor lines,
+// decorative bands, and style-specific details.
+function makeFacadeTexture(w, h, style) {
+  const S_W = 256, S_H = 512;
+  const cv = document.createElement('canvas');
+  cv.width = S_W; cv.height = S_H;
+  const cx = cv.getContext('2d');
+
+  const styles = [
+    // 0: Glass curtain wall (modern)
+    () => {
+      const g = cx.createLinearGradient(0,0,S_W,S_H);
+      g.addColorStop(0,'#5b8fa8'); g.addColorStop(.5,'#7ab0c8'); g.addColorStop(1,'#4a7a94');
+      cx.fillStyle = g; cx.fillRect(0,0,S_W,S_H);
+      cx.fillStyle='#2a4a5a'; cx.fillRect(0,0,S_W,S_H); // tint
+      // window grid
+      const cols=6, rows=Math.ceil(h/2.5);
+      const ww=S_W/cols*.7, wh=S_H/rows*.65;
+      for(let r=0;r<rows;r++) for(let c=0;c<cols;c++){
+        const bright = 0.6+Math.random()*0.4;
+        const lit = Math.random()<0.25;
+        cx.fillStyle = lit ? `rgba(255,240,180,${bright*0.9})` : `rgba(160,210,240,${bright*0.5})`;
+        cx.fillRect(c*(S_W/cols)+S_W/cols*.15, r*(S_H/rows)+S_H/rows*.2, ww, wh);
+        if(lit){ cx.fillStyle='rgba(255,220,100,0.15)'; cx.fillRect(c*(S_W/cols),r*(S_H/rows),S_W/cols,S_H/rows); }
+      }
+      // vertical mullions
+      cx.strokeStyle='#1a3a4a'; cx.lineWidth=3;
+      for(let c=1;c<cols;c++){ cx.beginPath(); cx.moveTo(c*S_W/cols,0); cx.lineTo(c*S_W/cols,S_H); cx.stroke(); }
+    },
+    // 1: Brick / terracotta low-rise
+    () => {
+      cx.fillStyle='#c87848'; cx.fillRect(0,0,S_W,S_H);
+      // brick pattern
+      const bw=28, bh=14;
+      for(let row=0;row<S_H/bh;row++){
+        const off=(row%2)*bw/2;
+        for(let col=-1;col<S_W/bw+1;col++){
+          const shade=Math.random()*30-15;
+          cx.fillStyle=`rgb(${200+shade},${120+shade/2},${72+shade/2})`;
+          cx.fillRect(col*bw+off+1, row*bh+1, bw-2, bh-2);
+        }
+      }
+      // mortar lines
+      cx.strokeStyle='#d8c8a8'; cx.lineWidth=1; cx.globalAlpha=0.4;
+      for(let row=0;row<=S_H/bh;row++){ cx.beginPath(); cx.moveTo(0,row*bh); cx.lineTo(S_W,row*bh); cx.stroke(); }
+      cx.globalAlpha=1;
+      // windows
+      const cols=3, rows=Math.ceil(h/3.5);
+      for(let r=1;r<rows;r++) for(let c=0;c<cols;c++){
+        const x=c*(S_W/cols)+S_W/cols*.2, y=r*(S_H/rows)-S_H/rows*.7;
+        const ww=S_W/cols*.55, wh=S_H/rows*.55;
+        cx.fillStyle='#1a2830'; cx.fillRect(x,y,ww,wh);
+        cx.fillStyle='rgba(200,230,255,0.3)'; cx.fillRect(x+2,y+2,ww-4,wh/2);
+        cx.strokeStyle='#b08060'; cx.lineWidth=2; cx.strokeRect(x-1,y-1,ww+2,wh+2);
+      }
+    },
+    // 2: Concrete Brutalist
+    () => {
+      const g = cx.createLinearGradient(0,0,0,S_H);
+      g.addColorStop(0,'#b0a898'); g.addColorStop(1,'#90887c');
+      cx.fillStyle=g; cx.fillRect(0,0,S_W,S_H);
+      // concrete texture
+      for(let i=0;i<2000;i++){
+        const v=Math.random()*20-10;
+        cx.fillStyle=`rgba(${128+v},${120+v},${112+v},0.3)`;
+        cx.fillRect(Math.random()*S_W,Math.random()*S_H,2,2);
+      }
+      // horizontal floor bands
+      const rows=Math.ceil(h/4);
+      cx.strokeStyle='#807870'; cx.lineWidth=3;
+      for(let r=1;r<rows;r++){ cx.beginPath(); cx.moveTo(0,r*S_H/rows); cx.lineTo(S_W,r*S_H/rows); cx.stroke(); }
+      // narrow slot windows
+      const cols=4;
+      for(let r=0;r<rows;r++) for(let c=0;c<cols;c++){
+        const lit=Math.random()<0.3;
+        cx.fillStyle=lit?'rgba(255,240,180,0.8)':'#1a1c1e';
+        cx.fillRect(c*(S_W/cols)+S_W/cols*.35, r*(S_H/rows)+S_H/rows*.25, S_W/cols*.3, S_H/rows*.4);
+      }
+    },
+    // 3: White stucco mediterranean
+    () => {
+      cx.fillStyle='#e8e0d4'; cx.fillRect(0,0,S_W,S_H);
+      for(let i=0;i<3000;i++){
+        const v=Math.random()*15-7;
+        cx.fillStyle=`rgba(${200+v},${190+v},${180+v},0.2)`;
+        cx.fillRect(Math.random()*S_W,Math.random()*S_H,3,3);
+      }
+      // arched windows
+      const cols=3, rows=Math.ceil(h/3);
+      for(let r=0;r<rows;r++) for(let c=0;c<cols;c++){
+        const x=c*(S_W/cols)+S_W/cols*.22, y=r*(S_H/rows)+S_H/rows*.15;
+        const ww=S_W/cols*.55, wh=S_H/rows*.6;
+        const lit=Math.random()<0.2;
+        cx.fillStyle=lit?'rgba(255,240,160,0.9)':'#2c3c50';
+        cx.fillRect(x,y+ww/2,ww,wh-ww/2);
+        cx.beginPath(); cx.arc(x+ww/2,y+ww/2,ww/2,Math.PI,0); cx.fill();
+        cx.strokeStyle='#c8b898'; cx.lineWidth=3;
+        cx.strokeRect(x-1,y-1,ww+2,wh+2);
+      }
+      // decorative horizontal bands
+      cx.fillStyle='rgba(180,160,140,0.4)';
+      for(let r=1;r<Math.ceil(h/3);r++){ cx.fillRect(0,r*S_H/Math.ceil(h/3)-2,S_W,4); }
+    },
+    // 4: Dark steel & glass tower
+    () => {
+      cx.fillStyle='#1a2028'; cx.fillRect(0,0,S_W,S_H);
+      // reflective panels
+      const cols=4, rows=Math.ceil(h/3);
+      for(let r=0;r<rows;r++) for(let c=0;c<cols;c++){
+        const reflect=Math.random();
+        cx.fillStyle=`rgba(${60+reflect*40},${80+reflect*60},${100+reflect*80},0.9)`;
+        cx.fillRect(c*(S_W/cols)+2,r*(S_H/rows)+2,S_W/cols-4,S_H/rows-4);
+        if(Math.random()<0.15){
+          cx.fillStyle='rgba(255,240,180,0.7)';
+          cx.fillRect(c*(S_W/cols)+4,r*(S_H/rows)+4,S_W/cols-8,S_H/rows-8);
+        }
+      }
+      // steel frame grid
+      cx.strokeStyle='#2a3040'; cx.lineWidth=4;
+      for(let c=0;c<=cols;c++){ cx.beginPath(); cx.moveTo(c*S_W/cols,0); cx.lineTo(c*S_W/cols,S_H); cx.stroke(); }
+      for(let r=0;r<=rows;r++){ cx.beginPath(); cx.moveTo(0,r*S_H/rows); cx.lineTo(S_W,r*S_H/rows); cx.stroke(); }
+    },
+  ];
+  styles[style % styles.length]();
+  const tex = new THREE.CanvasTexture(cv);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(Math.max(1,Math.round(w/8)), Math.max(1,Math.round(h/12)));
+  return tex;
+}
+
+// ── DECORATIVE BUILDING BUILDER ────────────────────────────────
+// Creates a Group with:
+//   - Main body with facade textures on all 4 sides
+//   - Roof structure (parapet, AC units, water towers etc.)
+//   - Base plinth / entrance
+//   - Optional balcony ledges
+function makeBuilding(x, z, w, h, d, colorHint=null) {
+  const group = new THREE.Group();
+  const style = Math.floor(Math.random()*5);
+
+  // ── Main body — 4 textured faces via multi-material ──────────
+  const faceTex = makeFacadeTexture(w, h, style);
+  const sideTex = makeFacadeTexture(d, h, style);
+  const roofTex = (() => {
+    const cv=document.createElement('canvas'); cv.width=cv.height=128;
+    const cx=cv.getContext('2d');
+    cx.fillStyle='#707868'; cx.fillRect(0,0,128,128);
+    for(let i=0;i<500;i++){const v=Math.random()*20-10;cx.fillStyle=`rgba(${100+v},${100+v},${90+v},0.4)`;cx.fillRect(Math.random()*128,Math.random()*128,3,3);}
+    return new THREE.CanvasTexture(cv);
+  })();
+
+  const mats = [
+    new THREE.MeshLambertMaterial({map:sideTex}),   // +X
+    new THREE.MeshLambertMaterial({map:sideTex}),   // -X
+    new THREE.MeshLambertMaterial({map:roofTex}),   // +Y (roof)
+    new THREE.MeshLambertMaterial({map:roofTex}),   // -Y
+    new THREE.MeshLambertMaterial({map:faceTex}),   // +Z front
+    new THREE.MeshLambertMaterial({map:faceTex}),   // -Z back
+  ];
+  const body = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), mats);
+  body.position.y = h/2;
+  body.castShadow = body.receiveShadow = true;
+  group.add(body);
+
+  // ── Plinth / base step ───────────────────────────────────────
+  const pMat = new THREE.MeshLambertMaterial({color:0x888078});
+  const plinth = new THREE.Mesh(new THREE.BoxGeometry(w+0.4, 0.6, d+0.4), pMat);
+  plinth.position.y = 0.3;
+  plinth.castShadow = plinth.receiveShadow = true;
+  group.add(plinth);
+
+  // ── Roof parapet ─────────────────────────────────────────────
+  const prtMat = new THREE.MeshLambertMaterial({color:0x909088});
+  const parapet = new THREE.Mesh(new THREE.BoxGeometry(w+0.2, 0.8, d+0.2), prtMat);
+  parapet.position.y = h + 0.4;
+  group.add(parapet);
+
+  // ── Rooftop details ──────────────────────────────────────────
+  const nDetails = 1 + Math.floor(Math.random()*4);
+  for(let i=0;i<nDetails;i++){
+    const type = Math.floor(Math.random()*4);
+    const dMat = new THREE.MeshLambertMaterial({color: [0x606058,0x505048,0x787070,0x484840][type]});
+    let detailMesh;
+    if(type===0){ // AC unit box
+      detailMesh = new THREE.Mesh(new THREE.BoxGeometry(1.2+Math.random()*1,0.8+Math.random()*0.5,1.2+Math.random()*1), dMat);
+    } else if(type===1){ // water tower cylinder
+      detailMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.6,0.7,1.8+Math.random(),8), dMat);
+    } else if(type===2){ // staircase housing
+      detailMesh = new THREE.Mesh(new THREE.BoxGeometry(2+Math.random(),1.5+Math.random(),2+Math.random()), dMat);
+    } else { // antenna mast
+      detailMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.08,2+Math.random()*3,6), dMat);
+    }
+    detailMesh.position.set(
+      (Math.random()-.5)*(w-2),
+      h + 0.8 + detailMesh.geometry.parameters.height/2 || h+1.5,
+      (Math.random()-.5)*(d-2)
+    );
+    group.add(detailMesh);
+  }
+
+  // ── Horizontal ledges / floor bands ──────────────────────────
+  if(h > 12 && Math.random() > 0.3) {
+    const ledgeMat = new THREE.MeshLambertMaterial({color:0x808078});
+    const nLedges = Math.floor(h/8);
+    for(let l=1;l<=nLedges;l++){
+      const ledge = new THREE.Mesh(new THREE.BoxGeometry(w+0.3,0.25,d+0.3), ledgeMat);
+      ledge.position.y = (h/nLedges)*l;
+      group.add(ledge);
+    }
+  }
+
+  // ── Corner columns (tall buildings) ──────────────────────────
+  if(h > 20 && Math.random() > 0.4) {
+    const colMat = new THREE.MeshLambertMaterial({color:0x787068});
+    [[w/2,d/2],[w/2,-d/2],[-w/2,d/2],[-w/2,-d/2]].forEach(([cx2,cz2])=>{
+      const col = new THREE.Mesh(new THREE.BoxGeometry(0.5,h+0.8,0.5), colMat);
+      col.position.set(cx2, h/2, cz2);
+      group.add(col);
+    });
+  }
+
+  group.position.set(x, 0, z);
+  group.receiveShadow = true;
+  scene.add(group);
+
+  const collider = {
+    mesh: body, x, z, w, h, d,
+    minX: x - w/2, maxX: x + w/2,
+    minZ: z - d/2, maxZ: z + d/2,
+  };
+  COLLIDERS.push(collider);
+  // Store reference on the group so unloadChunk can clean it up
+  if(!group._colliders) group._colliders = [];
+  group._colliders.push(collider);
+  return group;
+}
+
+// Strategic buildings around the start area — varied sizes & styles
+const bldColors = [0xc4b8a8, 0xb8c4b0, 0xd4c4a0, 0xa8b8c4, 0xc8b090]; // kept for compat
+makeBuilding(  0,  -55, 18, 22, 10);
+makeBuilding( 30,  -40, 10, 32, 10);
+makeBuilding(-30,  -40, 10, 28, 10);
+makeBuilding( 50,    0, 14, 20, 12);
+makeBuilding(-50,    0, 14, 20, 12);
+makeBuilding(  0,   60, 22, 16, 14);
+makeBuilding( 40,   50, 9,  40, 9);
+makeBuilding(-40,   50, 9,  38, 9);
+makeBuilding( 80,  -80, 18, 26, 16);
+makeBuilding(-80,  -80, 18, 26, 16);
+for(let i=0;i<80;i++){
+  const px=(Math.random()-.5)*600, pz=(Math.random()-.5)*600;
+  if(Math.hypot(px,pz)<70) continue;
+  const w=6+Math.random()*20, h=10+Math.random()*55, d=6+Math.random()*20;
+  makeBuilding(px,pz,w,h,d);
+}
+
+// Cones
+for(let i=-10;i<=10;i++){
+  const cone=(x,z)=>{
+    const g=new THREE.Group();
+    const b=new THREE.Mesh(new THREE.ConeGeometry(.15,.4,8),new THREE.MeshLambertMaterial({color:0xff5500}));
+    b.position.y=.2; g.add(b); g.position.set(x,0,z); scene.add(g);
+  };
+  cone(6, i*7); cone(-6, i*7);
+}
+
+// ── STREET FURNITURE ─────────────────────────────────────────
+// Lamp posts along main road edges
+function makeLampPost(x, z) {
+  const g = new THREE.Group();
+  // Pole
+  const pole = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.06, 0.09, 5.5, 8),
+    new THREE.MeshLambertMaterial({color:0x484840})
+  );
+  pole.position.y = 2.75; g.add(pole);
+  // Arm
+  const arm = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.04, 0.04, 1.4, 6),
+    new THREE.MeshLambertMaterial({color:0x484840})
+  );
+  arm.rotation.z = Math.PI/2; arm.position.set(0.7, 5.4, 0); g.add(arm);
+  // Lamp head
+  const head = new THREE.Mesh(
+    new THREE.BoxGeometry(0.5, 0.18, 0.3),
+    new THREE.MeshLambertMaterial({color:0x1a1a14})
+  );
+  head.position.set(1.1, 5.35, 0); g.add(head);
+  // Lamp glow face
+  const glow = new THREE.Mesh(
+    new THREE.BoxGeometry(0.44, 0.06, 0.28),
+    new THREE.MeshBasicMaterial({color:0xfff0b0})
+  );
+  glow.position.set(1.1, 5.26, 0); g.add(glow);
+  // Point light
+  const pl = new THREE.PointLight(0xffeebb, 0.8, 18);
+  pl.position.set(1.1, 5.2, 0); g.add(pl);
+  // Base
+  const base = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.18, 0.22, 0.35, 8),
+    new THREE.MeshLambertMaterial({color:0x2a2a22})
+  );
+  base.position.y = 0.17; g.add(base);
+  g.position.set(x, 0, z);
+  scene.add(g);
+
+  // Register lamp post as a collider (pole radius ~0.12, treated as small box)
+  const poleR = 0.18; // collision radius with a little margin
+  const lampCollider = {
+    mesh: pole, x, z, w: poleR*2, h: 5.5, d: poleR*2,
+    minX: x - poleR, maxX: x + poleR,
+    minZ: z - poleR, maxZ: z + poleR,
+    isLampPost: true,
+  };
+  COLLIDERS.push(lampCollider);
+  return { group: g, collider: lampCollider };
+}
+
+// Trees (simple but layered)
+function makeTree(x, z, h=4.5) {
+  const g = new THREE.Group();
+  // Trunk
+  const trunk = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.12, 0.2, h*0.4, 7),
+    new THREE.MeshLambertMaterial({color:0x6b4a28})
+  );
+  trunk.position.y = h*0.2; g.add(trunk);
+  // Three foliage layers
+  const foliageMat = new THREE.MeshLambertMaterial({color: new THREE.Color().setHSL(0.28+Math.random()*0.08, 0.6, 0.28+Math.random()*0.1)});
+  [[0, h*0.55, h*0.55],[0, h*0.72, h*0.42],[0, h*0.86, h*0.28]].forEach(([ly, ry, rr], i)=>{
+    const layer = new THREE.Mesh(
+      new THREE.ConeGeometry(rr*0.5, ry*0.5, 7+i),
+      foliageMat
+    );
+    layer.position.y = h*0.4 + i*h*0.18;
+    layer.rotation.y = Math.random()*Math.PI;
+    g.add(layer);
+  });
+  g.position.set(x, 0, z);
+  scene.add(g);
+}
+
+// Place lamp posts and trees along sidewalks
+const lampSpacing = 28;
+for(let i = -5; i <= 5; i++) {
+  makeLampPost( 9, i*lampSpacing);   // right side
+  makeLampPost(-9, i*lampSpacing);   // left side
+  makeLampPost(i*lampSpacing,  9);   // top
+  makeLampPost(i*lampSpacing, -9);   // bottom
+}
+
+// Trees in clusters
+for(let i = -4; i <= 4; i++) {
+  makeTree( 11.5, i*lampSpacing + 7,  3.5 + Math.random()*2);
+  makeTree(-11.5, i*lampSpacing - 7,  3.5 + Math.random()*2);
+  makeTree(i*lampSpacing + 7,  11.5, 3.5 + Math.random()*2);
+  makeTree(i*lampSpacing - 7, -11.5, 3.5 + Math.random()*2);
+}
+// Scattered trees further out
+for(let i = 0; i < 40; i++) {
+  const tx = (Math.random()-.5)*400, tz = (Math.random()-.5)*400;
+  if(Math.abs(tx)<8 || Math.abs(tz)<8) continue; // not on road
+  makeTree(tx, tz, 3+Math.random()*4);
+}
+
+// Scattered trees further out
+for(let i = 0; i < 40; i++) {
+  const tx = (Math.random()-.5)*400, tz = (Math.random()-.5)*400;
+  if(Math.abs(tx)<8 || Math.abs(tz)<8) continue; // not on road
+  makeTree(tx, tz, 3+Math.random()*4);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  PEDESTRIAN SYSTEM — GTA-style animated human characters
+//
+//  Each ped has:
+//    - Full articulated body: head, torso, pelvis, upper/lower arms,
+//      upper/lower legs, feet — all as skinned groups
+//    - Walk cycle: sine-wave limb swing synced to step speed
+//    - States: IDLE, WALK, RUN (flee), PANIC_FREEZE, FALLEN
+//    - Flee: detects car within ~14m, sprints away screaming
+//    - Sidewalk pathfinding: follows waypoints on sidewalk strips
+//    - Colour variety: skin tones, clothes, hair
+//
+//  Anatomy proportions (metres):
+//    Total height  ≈ 1.75m
+//    Head radius   = 0.115
+//    Torso h       = 0.55   (shoulders to hips)
+//    Upper arm     = 0.28,  Lower arm = 0.24
+//    Upper leg     = 0.38,  Lower leg = 0.36
+//    Foot          = 0.14 × 0.06 × 0.22
+// ═══════════════════════════════════════════════════════════════
+
+const PEDS = [];
+const PED_COUNT = 12;
+const PED_FLEE_DIST   = 14;  // m — car proximity triggers flee
+const PED_SPEED_WALK  = 1.2; // m/s
+const PED_SPEED_RUN   = 4.8; // m/s
+const PED_PANIC_DIST  = 6;   // m — car this close → freeze/fall
+
+// Sidewalk spawn zones — stay ≥ 9m from road centre (8m road half-width)
+const SW_STRIPS = [
+  // [xMin, xMax, zMin, zMax, axis]  axis: 'x'=move along X, 'z'=move along Z
+  { xMin:-140, xMax:140,  zMin: 9,   zMax: 13,  axis:'x' },  // North sidewalk
+  { xMin:-140, xMax:140,  zMin:-13,  zMax:-9,   axis:'x' },  // South sidewalk
+  { xMin: 9,   xMax: 13,  zMin:-140, zMax:140,  axis:'z' },  // East sidewalk
+  { xMin:-13,  xMax:-9,   zMin:-140, zMax:140,  axis:'z' },  // West sidewalk
+];
+
+function randomSkinTone() {
+  const tones = [0xf5c9a0, 0xe8a87c, 0xc68642, 0x8d5524, 0x4a2912, 0xfde8d0];
+  return tones[Math.floor(Math.random()*tones.length)];
+}
+function randomClothesColor() {
+  return new THREE.Color().setHSL(Math.random(), 0.5+Math.random()*0.4, 0.25+Math.random()*0.45);
+}
+
+function makePed() {
+  const skin    = randomSkinTone();
+  const shirt   = randomClothesColor();
+  const pants   = randomClothesColor();
+  const hair    = [0x1a0a00, 0x3b1f0a, 0x8b6914, 0xf0d080, 0x222222, 0xff4400][Math.floor(Math.random()*6)];
+
+  const mSkin   = new THREE.MeshLambertMaterial({color:skin});
+  const mShirt  = new THREE.MeshLambertMaterial({color:shirt});
+  const mPants  = new THREE.MeshLambertMaterial({color:pants});
+  const mHair   = new THREE.MeshLambertMaterial({color:hair});
+  const mShoe   = new THREE.MeshLambertMaterial({color:0x222222});
+
+  const root = new THREE.Group(); // world-space group
+
+  // ── Pelvis (root of skeleton) ─────────────────────────────
+  const pelvis = new THREE.Group();
+  pelvis.position.y = 0.92; // hip height
+  root.add(pelvis);
+
+  // Torso
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.32,0.50,0.18), mShirt);
+  torso.position.y = 0.30;
+  pelvis.add(torso);
+
+  // Shoulders (wider visual)
+  const shoulder = new THREE.Mesh(new THREE.BoxGeometry(0.38,0.10,0.17), mShirt);
+  shoulder.position.y = 0.52; pelvis.add(shoulder);
+
+  // Head group
+  const headGroup = new THREE.Group();
+  headGroup.position.y = 0.68;
+  pelvis.add(headGroup);
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.115, 6, 5), mSkin);
+  headGroup.add(head);
+  // Hair
+  const hairMesh = new THREE.Mesh(new THREE.SphereGeometry(0.118, 6, 4, 0, Math.PI*2, 0, Math.PI/2), mHair);
+  hairMesh.position.y = 0.02; headGroup.add(hairMesh);
+  // Eyes (tiny dark dots)
+  const eyeMat = new THREE.MeshLambertMaterial({color:0x111111});
+  [-0.04,0.04].forEach(ex => {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.018, 4, 3), eyeMat);
+    eye.position.set(ex, 0.02, 0.105); headGroup.add(eye);
+  });
+
+  // ── Arms ─────────────────────────────────────────────────
+  function makeArm(side) {
+    const g = new THREE.Group();
+    g.position.set(side * 0.20, 0.50, 0);
+    pelvis.add(g);
+    const ua = new THREE.Mesh(new THREE.CylinderGeometry(0.042,0.038,0.26,7), mShirt);
+    ua.position.y = -0.14; g.add(ua);
+    const elbow = new THREE.Group(); elbow.position.y = -0.29; g.add(elbow);
+    const la = new THREE.Mesh(new THREE.CylinderGeometry(0.036,0.030,0.22,7), mSkin);
+    la.position.y = -0.12; elbow.add(la);
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.038,6,4), mSkin);
+    hand.position.y = -0.25; elbow.add(hand);
+    return { g, elbow };
+  }
+  const armL = makeArm(-1), armR = makeArm(1);
+
+  // ── Legs ─────────────────────────────────────────────────
+  function makeLeg(side) {
+    const g = new THREE.Group();
+    g.position.set(side * 0.10, 0, 0);
+    pelvis.add(g);
+    const ul = new THREE.Mesh(new THREE.CylinderGeometry(0.055,0.048,0.36,7), mPants);
+    ul.position.y = -0.20; g.add(ul);
+    const knee = new THREE.Group(); knee.position.y = -0.40; g.add(knee);
+    const ll = new THREE.Mesh(new THREE.CylinderGeometry(0.044,0.038,0.34,7), mPants);
+    ll.position.y = -0.18; knee.add(ll);
+    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.10,0.06,0.22), mShoe);
+    foot.position.set(0,-0.37,0.04); knee.add(foot);
+    return { g, knee };
+  }
+  const legL = makeLeg(-1), legR = makeLeg(1);
+
+  scene.add(root);
+
+  // Pick a random sidewalk strip and position
+  const strip = SW_STRIPS[Math.floor(Math.random()*SW_STRIPS.length)];
+  const startX = strip.xMin + Math.random()*(strip.xMax-strip.xMin);
+  const startZ = strip.zMin + Math.random()*(strip.zMax-strip.zMin);
+  root.position.set(startX, 0, startZ);
+
+  const heading = Math.random()*Math.PI*2;
+  root.rotation.y = heading;
+
+  const ped = {
+    root, pelvis, headGroup,
+    armL, armR, legL, legR,
+    strip,
+    heading,
+    state: 'WALK',       // IDLE | WALK | RUN | PANIC_FREEZE | FALLEN
+    speed: PED_SPEED_WALK,
+    animPhase: Math.random()*Math.PI*2,  // walk cycle offset
+    idleTimer: 0,        // time left in idle pause
+    target: null,        // {x,z} waypoint
+    panicTimer: 0,
+    fallAngle: 0,
+    screamTimer: 0,
+    // Body colour refs for animation
+  };
+
+  pickWaypoint(ped);
+  return ped;
+}
+
+function pickWaypoint(ped) {
+  const s = ped.strip;
+  // New random target within the same strip
+  const tx = s.xMin + Math.random()*(s.xMax-s.xMin);
+  const tz = s.zMin + Math.random()*(s.zMax-s.zMin);
+  ped.target = {x:tx, z:tz};
+}
+
+function updatePeds(dt) {
+  const carX = S.pos.x, carZ = S.pos.z;
+  const now = performance.now() * 0.001;
+
+  for(const ped of PEDS) {
+    if(ped.state === 'FALLEN') {
+      // Fallen — just animate the fall tilt and stay
+      ped.fallAngle = Math.min(ped.fallAngle + dt * 5, Math.PI/2);
+      ped.root.rotation.x = ped.fallAngle;
+      continue;
+    }
+
+    // ── Car proximity detection ──────────────────────────────
+    const dx = carX - ped.root.position.x;
+    const dz = carZ - ped.root.position.z;
+    const dist = Math.sqrt(dx*dx + dz*dz);
+    const carSpeed = Math.abs(S.vLong);
+
+    if(!S.crashed) {
+      if(dist < PED_PANIC_DIST && carSpeed > 3) {
+        // Car too close & moving — ped falls/dives
+        if(ped.state !== 'FALLEN') {
+          ped.state = 'FALLEN';
+          ped.fallAngle = 0;
+          ped.root.rotation.z = (Math.random()-0.5)*0.8;
+        }
+        continue;
+      } else if(dist < PED_FLEE_DIST && carSpeed > 2) {
+        // Flee! Run away from car
+        ped.state = 'RUN';
+        ped.speed = PED_SPEED_RUN;
+        // Head away from car
+        ped.heading = Math.atan2(-dx, -dz);
+      } else if(ped.state === 'RUN' && dist > PED_FLEE_DIST + 4) {
+        // Safe now — resume walking
+        ped.state = 'WALK';
+        ped.speed = PED_SPEED_WALK;
+        pickWaypoint(ped);
+      }
+    }
+
+    if(ped.state === 'IDLE') {
+      ped.idleTimer -= dt;
+      if(ped.idleTimer <= 0) {
+        ped.state = 'WALK';
+        ped.speed = PED_SPEED_WALK;
+        pickWaypoint(ped);
+      }
+      // Idle head bob
+      ped.headGroup.rotation.y = Math.sin(now * 0.7 + ped.animPhase) * 0.3;
+      continue;
+    }
+
+    // ── Move toward target (WALK/RUN) ────────────────────────
+    if(ped.target && ped.state !== 'FROZEN') {
+      const tdx = ped.target.x - ped.root.position.x;
+      const tdz = ped.target.z - ped.root.position.z;
+      const tdist = Math.sqrt(tdx*tdx + tdz*tdz);
+
+      if(tdist < 1.0) {
+        // Reached waypoint
+        if(ped.state === 'WALK' && Math.random() < 0.3) {
+          // Occasional idle pause
+          ped.state = 'IDLE';
+          ped.idleTimer = 1 + Math.random()*3;
+        } else {
+          pickWaypoint(ped);
+        }
+      } else {
+        // Smoothly turn toward target
+        if(ped.state !== 'RUN') {
+          ped.heading = Math.atan2(tdx, tdz);
+        }
+        // Move forward
+        const moveSpeed = ped.speed * dt;
+        const cosH = Math.cos(ped.heading), sinH = Math.sin(ped.heading);
+        ped.root.position.x += sinH * moveSpeed;
+        ped.root.position.z += cosH * moveSpeed;
+        ped.root.rotation.y = ped.heading;
+
+        // Clamp to sidewalk strip (don't wander into road)
+        const s = ped.strip;
+        ped.root.position.x = Math.max(s.xMin, Math.min(s.xMax, ped.root.position.x));
+        ped.root.position.z = Math.max(s.zMin, Math.min(s.zMax, ped.root.position.z));
+      }
+    }
+
+    // ── Walk/run animation cycle ─────────────────────────────
+    // Walk cycle frequency scales with speed
+    const freq = ped.speed * 2.8;
+    ped.animPhase += freq * dt;
+    const t = ped.animPhase;
+    const swingAmt = ped.state === 'RUN' ? 0.7 : 0.38;
+
+    // Leg swing: opposite legs move together
+    const legSwing = Math.sin(t) * swingAmt;
+    const kneeFlexL = Math.max(0, Math.sin(t + 0.4) * swingAmt * 0.8);
+    const kneeFlexR = Math.max(0, Math.sin(t + Math.PI + 0.4) * swingAmt * 0.8);
+
+    ped.legL.g.rotation.x      = legSwing;
+    ped.legR.g.rotation.x      = -legSwing;
+    ped.legL.knee.rotation.x   = kneeFlexL;
+    ped.legR.knee.rotation.x   = kneeFlexR;
+
+    // Arm swing: opposite to legs (natural gait)
+    const armSwing = swingAmt * 0.65;
+    ped.armL.g.rotation.x  = -legSwing * 0.9;
+    ped.armR.g.rotation.x  =  legSwing * 0.9;
+    // Elbow slight flex when running
+    ped.armL.elbow.rotation.x = ped.state === 'RUN' ? -0.7 : -0.1;
+    ped.armR.elbow.rotation.x = ped.state === 'RUN' ? -0.7 : -0.1;
+
+    // Body bob (vertical pelvis oscillation)
+    const bobAmt = ped.state === 'RUN' ? 0.06 : 0.022;
+    ped.pelvis.position.y = 0.92 + Math.abs(Math.sin(t * 2)) * bobAmt;
+
+    // Torso counter-rotate (realistic spine twist)
+    ped.pelvis.rotation.y = Math.sin(t) * 0.08;
+
+    // Head stays roughly forward in run, bobs gently in walk
+    ped.headGroup.rotation.y = Math.sin(t * 0.5 + 0.3) * 0.12;
+    ped.headGroup.rotation.x = ped.state === 'RUN' ? 0.18 : 0.0;
+  }
+}
+
+// ── Spawn pedestrians ──────────────────────────────────────────
+for(let i=0; i<PED_COUNT; i++) PEDS.push(makePed());
+
+
+//  Hold Shift to apply continuous thrust directly to the car.
+//  Force is fed into physicsStep via S.padBoostForce each frame.
+//  Max speed capped at 110 m/s (~396 km/h).
+// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+//  UNLIMITED PROCEDURAL WORLD — chunk-based streaming
+//
+//  The world is divided into CHUNK_SIZE × CHUNK_SIZE cells.
+//  As the car moves, chunks within VIEW_RADIUS are generated,
+//  and chunks outside UNLOAD_RADIUS are despawned.
+//
+//  Each chunk contains:
+//    - Road segments (if on road grid)
+//    - Buildings (off-road chunks)
+//    - Trees, lamp posts
+//    - Sidewalk strips
+//
+//  Road grid: roads run every BLOCK_SIZE units on X and Z axes,
+//  creating an infinite city grid.
+// ═══════════════════════════════════════════════════════════════
+const CHUNK_SIZE    = 120;   // world units per chunk
+const VIEW_RADIUS   = 2;     // chunks visible in each direction (2 = 5×5=25 chunks)
+const UNLOAD_RADIUS = 3;     // chunks kept before unloading
+const BLOCK_SIZE    = 120;   // road spacing (same as chunk for simplicity)
+const ROAD_HALF    = 8;      // half-width of road lanes
+
+const loadedChunks = new Map(); // key: "cx,cz" → THREE.Group
+
+// Shared cheap materials for chunk geometry
+const CHUNK_ROAD_MAT = new THREE.MeshLambertMaterial({color:0x080808});
+const CHUNK_MARK_MAT = new THREE.MeshBasicMaterial({color:0x888888});
+const CHUNK_SW_MAT   = new THREE.MeshLambertMaterial({color:0xa09888});
+
+// Seeded noise for deterministic world
+function seededRand(seed) {
+  let s = seed;
+  return function() {
+    s = (s * 1664525 + 1013904223) & 0xffffffff;
+    return (s >>> 0) / 0xffffffff;
+  };
+}
+
+function chunkKey(cx, cz) { return `${cx},${cz}`; }
+
+function worldToChunk(wx, wz) {
+  return {
+    cx: Math.floor(wx / CHUNK_SIZE),
+    cz: Math.floor(wz / CHUNK_SIZE)
+  };
+}
+
+function isRoadChunkX(cx) { return cx % 1 === 0; }  // every chunk has E-W road
+function isRoadChunkZ(cz) { return cz % 1 === 0; }  // every chunk has N-S road
+
+// Shared chunk road geometry (reused)
+const CHUNK_PLANE_GEO = new THREE.PlaneGeometry(CHUNK_SIZE, CHUNK_SIZE);
+
+function generateChunk(cx, cz) {
+  const key = chunkKey(cx, cz);
+  if(loadedChunks.has(key)) return;
+
+  const group = new THREE.Group();
+  const rng = seededRand((cx * 73856093) ^ (cz * 19349663));
+  const ox = cx * CHUNK_SIZE, oz = cz * CHUNK_SIZE;
+  const mid = CHUNK_SIZE / 2;
+  const worldMidX = ox + mid, worldMidZ = oz + mid;
+
+  // Single canvas-textured plane covers entire chunk (1 draw call for roads+markings+sidewalk)
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 256;
+  const ctx = cv.getContext('2d');
+
+  // Base off-road pavement
+  ctx.fillStyle = '#504a42'; ctx.fillRect(0,0,256,256);
+
+  // Road cross
+  const roadFrac = (ROAD_HALF*2) / CHUNK_SIZE;
+  const roadPx = Math.round(roadFrac * 256);
+  const roadStart = (256 - roadPx) / 2;
+  ctx.fillStyle = '#0a0a0a';
+  ctx.fillRect(0, roadStart, 256, roadPx);
+  ctx.fillRect(roadStart, 0, roadPx, 256);
+
+  // Sidewalk strips
+  const swPx = Math.round((4/CHUNK_SIZE)*256);
+  const swOff = Math.round(((ROAD_HALF+2)/CHUNK_SIZE)*256);
+  ctx.fillStyle = '#a09888';
+  ctx.fillRect(0, roadStart-swOff-swPx, 256, swPx);
+  ctx.fillRect(0, roadStart+roadPx+swOff, 256, swPx);
+  ctx.fillRect(roadStart-swOff-swPx, 0, swPx, 256);
+  ctx.fillRect(roadStart+roadPx+swOff, 0, swPx, 256);
+
+  // Centre dashes
+  ctx.fillStyle = '#777777';
+  const dashPx=12, gapPx=8, lineOff=Math.round((2/CHUNK_SIZE)*256);
+  for(let d=0; d<256; d+=dashPx+gapPx) {
+    ctx.fillRect(d, 128-lineOff-1, dashPx, 2);
+    ctx.fillRect(d, 128+lineOff-1, dashPx, 2);
+    ctx.fillRect(128-lineOff-1, d, 2, dashPx);
+    ctx.fillRect(128+lineOff-1, d, 2, dashPx);
+  }
+
+  const tex = new THREE.CanvasTexture(cv);
+  const plane = new THREE.Mesh(new THREE.PlaneGeometry(CHUNK_SIZE, CHUNK_SIZE),
+    new THREE.MeshLambertMaterial({map:tex}));
+  plane.rotation.x = -Math.PI/2;
+  plane.position.set(worldMidX, 0.003, worldMidZ);
+  scene.add(plane);
+  group.add(plane);
+
+  // One lamp post per chunk (random corner)
+  if(rng() > 0.3) {
+    const lp = makeLampPost(worldMidX + ROAD_HALF+2, worldMidZ + ROAD_HALF+2);
+    if(lp) {
+      if(!group._lampColliders) group._lampColliders = [];
+      group._lampColliders.push(lp.collider);
+    }
+  }
+
+  // Max 2 buildings per chunk
+  if(rng() < 0.8) {
+    const bx = worldMidX + (rng()<0.5?1:-1)*(ROAD_HALF+14+rng()*8);
+    const bz = worldMidZ + (rng()<0.5?1:-1)*(ROAD_HALF+14+rng()*8);
+    makeBuilding(bx, bz, 8+rng()*14, 6+rng()*22, 8+rng()*14);
+  }
+  if(rng() < 0.5) {
+    const bx = worldMidX + (rng()<0.5?1:-1)*(ROAD_HALF+14+rng()*8);
+    const bz = worldMidZ + (rng()<0.5?1:-1)*(ROAD_HALF+14+rng()*8);
+    makeBuilding(bx, bz, 6+rng()*10, 6+rng()*18, 6+rng()*10);
+  }
+
+  // 1-2 trees per chunk
+  for(let t=0; t<1+Math.floor(rng()*2); t++) {
+    const tx = worldMidX + (rng()-0.5)*80;
+    const tz = worldMidZ + (rng()-0.5)*80;
+    if(Math.abs(tx-worldMidX)>ROAD_HALF+5 && Math.abs(tz-worldMidZ)>ROAD_HALF+5)
+      makeTree(tx, tz, 3+rng()*4);
+  }
+
+  group.userData = {cx, cz};
+  loadedChunks.set(key, group);
+}
+
+function unloadChunk(key) {
+  const group = loadedChunks.get(key);
+  if(!group) return;
+
+  // Remove building colliders that belong to this chunk
+  if(group._colliders) {
+    for(const col of group._colliders) {
+      const idx = COLLIDERS.indexOf(col);
+      if(idx !== -1) COLLIDERS.splice(idx, 1);
+    }
+  }
+  // Remove lamp-post colliders that belong to this chunk
+  if(group._lampColliders) {
+    for(const col of group._lampColliders) {
+      const idx = COLLIDERS.indexOf(col);
+      if(idx !== -1) COLLIDERS.splice(idx, 1);
+    }
+  }
+
+  // Remove all child meshes from scene
+  group.traverse(obj => {
+    if(obj.isMesh) {
+      scene.remove(obj);
+      obj.geometry.dispose();
+      if(Array.isArray(obj.material)) obj.material.forEach(m=>m.dispose());
+      else obj.material.dispose();
+    }
+  });
+  loadedChunks.delete(key);
+}
+
+let lastChunkCX = null, lastChunkCZ = null;
+const chunkGenQueue = []; // pending chunk keys to generate
+
+function updateWorld() {
+  const {cx,cz} = worldToChunk(S.pos.x, S.pos.z);
+
+  // Always unload far chunks (cheap — just removes from scene)
+  for(const [key, group] of loadedChunks) {
+    const {cx:gcx, cz:gcz} = group.userData;
+    if(Math.abs(gcx-cx)>UNLOAD_RADIUS || Math.abs(gcz-cz)>UNLOAD_RADIUS) {
+      unloadChunk(key);
+    }
+  }
+
+  if(cx === lastChunkCX && cz === lastChunkCZ) {
+    // No chunk boundary crossed — just drain one item from the queue
+    drainChunkQueue();
+    return;
+  }
+  lastChunkCX = cx; lastChunkCZ = cz;
+
+  // Enqueue nearby chunks (closest first so visible area loads in order)
+  const toQueue = [];
+  for(let dx=-VIEW_RADIUS; dx<=VIEW_RADIUS; dx++) {
+    for(let dz=-VIEW_RADIUS; dz<=VIEW_RADIUS; dz++) {
+      const key = chunkKey(cx+dx, cz+dz);
+      if(!loadedChunks.has(key) && !chunkGenQueue.includes(key)) {
+        toQueue.push({ key, dist: dx*dx + dz*dz });
+      }
+    }
+  }
+  // Sort by distance so the chunks right around the car load first
+  toQueue.sort((a,b) => a.dist - b.dist);
+  for(const item of toQueue) chunkGenQueue.push(item.key);
+}
+
+function drainChunkQueue() {
+  // Generate at most 1 chunk per frame to avoid hitches
+  if(chunkGenQueue.length === 0) return;
+  const key = chunkGenQueue.shift();
+  if(loadedChunks.has(key)) return; // already loaded, skip
+  const [cxs, czs] = key.split(',').map(Number);
+  generateChunk(cxs, czs);
+}
+
+// Initial world generation around origin
+for(let dx=-VIEW_RADIUS; dx<=VIEW_RADIUS; dx++) {
+  for(let dz=-VIEW_RADIUS; dz<=VIEW_RADIUS; dz++) {
+    generateChunk(dx, dz);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  3D MAP SYSTEM — Isometric Three.js map + 2D minimap
+//  Full-screen map uses a dedicated Three.js scene rendered into
+//  the #map-canvas element with an orthographic camera at ~45°.
+//  Buildings, roads, pedestrians and the car are all shown in 3D.
+// ═══════════════════════════════════════════════════════════════
+let mapOpen = false;
+
+// ── Minimap stays 2D (fast) ───────────────────────────────────
+const MINI_SCALE = 0.5;
+const MINI_VIEW  = 120;
+const miniCanvas = document.getElementById('minimap-canvas');
+const miniCtx    = miniCanvas.getContext('2d');
+
+// ── 3D Map renderer & scene ───────────────────────────────────
+const mapCanvas    = document.getElementById('map-canvas');
+const mapHudCanvas = document.getElementById('map-hud-canvas');
+const mapHudCtx    = mapHudCanvas.getContext('2d');
+
+const MAP_W = mapCanvas.width;
+const MAP_H = mapCanvas.height;
+
+// Dedicated renderer for the map (shares WebGL context with main renderer is risky;
+// use a separate renderer on the map canvas)
+const mapRenderer = new THREE.WebGLRenderer({ canvas: mapCanvas, antialias: true, alpha: false });
+mapRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+mapRenderer.setSize(MAP_W, MAP_H);
+mapRenderer.setClearColor(0x050a05, 1);
+mapRenderer.shadowMap.enabled = false;
+
+// Separate Three.js scene for map
+const mapScene = new THREE.Scene();
+mapScene.background = new THREE.Color(0x050a05);
+mapScene.fog = new THREE.Fog(0x050a05, 400, 900);
+
+// Ambient + directional light for map
+const mapAmbient = new THREE.AmbientLight(0xffffff, 0.55);
+mapScene.add(mapAmbient);
+const mapSun = new THREE.DirectionalLight(0xffeedd, 1.1);
+mapSun.position.set(120, 200, 80);
+mapScene.add(mapSun);
+
+// Orthographic camera — isometric-style
+const MAP_VIEW_HALF = 220; // world units half-extent visible
+const mapAspect = MAP_W / MAP_H;
+const mapCamera = new THREE.OrthographicCamera(
+  -MAP_VIEW_HALF * mapAspect,  MAP_VIEW_HALF * mapAspect,
+   MAP_VIEW_HALF,             -MAP_VIEW_HALF,
+  -2000, 2000
+);
+// Isometric 45° elevation, 45° azimuth (classic city view)
+const MAP_CAM_ELEV = Math.PI / 4.5;   // ~40° elevation
+const MAP_CAM_AZIM_DEFAULT = Math.PI / 4; // 45° azimuth
+let mapCamAzim  = MAP_CAM_AZIM_DEFAULT;
+let mapCamZoom  = 1.0;
+const MAP_CAM_DIST = 350;
+
+function updateMapCamera() {
+  const cx = S.pos.x, cz = S.pos.z;
+  const camX = cx + MAP_CAM_DIST * Math.sin(mapCamAzim) * Math.cos(MAP_CAM_ELEV);
+  const camY =       MAP_CAM_DIST * Math.sin(MAP_CAM_ELEV);
+  const camZ = cz + MAP_CAM_DIST * Math.cos(mapCamAzim) * Math.cos(MAP_CAM_ELEV);
+  mapCamera.position.set(camX, camY, camZ);
+  mapCamera.lookAt(cx, 0, cz);
+
+  const z = mapCamZoom;
+  mapCamera.left   = -MAP_VIEW_HALF * mapAspect / z;
+  mapCamera.right  =  MAP_VIEW_HALF * mapAspect / z;
+  mapCamera.top    =  MAP_VIEW_HALF / z;
+  mapCamera.bottom = -MAP_VIEW_HALF / z;
+  mapCamera.updateProjectionMatrix();
+  mapSun.position.set(cx+120, 200, cz+80);
+}
+
+// ── Map geometry — mirror a simplified version of world in mapScene ──
+// We maintain a parallel set of map objects that live in mapScene.
+// These are simpler (fewer materials, no shadows) but give the right 3D feel.
+
+// Ground plane for map
+const mapGround = new THREE.Mesh(
+  new THREE.PlaneGeometry(50000, 50000),
+  new THREE.MeshLambertMaterial({ color: 0x0d1a0d })
+);
+mapGround.rotation.x = -Math.PI / 2;
+mapGround.position.y = -0.1;
+mapScene.add(mapGround);
+
+// Road material for map
+const MAP_ROAD_MAT  = new THREE.MeshLambertMaterial({ color: 0x1a2018 });
+const MAP_SW_MAT    = new THREE.MeshLambertMaterial({ color: 0x8a8070 });
+const MAP_MARK_MAT  = new THREE.MeshBasicMaterial({ color: 0x555544 });
+
+// Track which map-chunks have been built
+const mapChunks = new Map(); // key → THREE.Group in mapScene
+
+function buildMapChunk(cx, cz) {
+  const key = `${cx},${cz}`;
+  if(mapChunks.has(key)) return;
+
+  const group = new THREE.Group();
+  const worldMidX = cx * CHUNK_SIZE + CHUNK_SIZE / 2;
+  const worldMidZ = cz * CHUNK_SIZE + CHUNK_SIZE / 2;
+
+  // Road surface (flat plane)
+  const roadH = new THREE.Mesh(new THREE.PlaneGeometry(ROAD_HALF*2, CHUNK_SIZE), MAP_ROAD_MAT);
+  roadH.rotation.x = -Math.PI/2; roadH.position.set(worldMidX, 0, worldMidZ);
+  group.add(roadH);
+  const roadV = new THREE.Mesh(new THREE.PlaneGeometry(CHUNK_SIZE, ROAD_HALF*2), MAP_ROAD_MAT);
+  roadV.rotation.x = -Math.PI/2; roadV.position.set(worldMidX, 0, worldMidZ);
+  group.add(roadV);
+
+  // Lane markings (tiny raised strips)
+  for(let t = -CHUNK_SIZE/2 + 10; t < CHUNK_SIZE/2; t += 20) {
+    const m1 = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.08, 6), MAP_MARK_MAT);
+    m1.position.set(worldMidX, 0.04, worldMidZ + t);
+    group.add(m1);
+    const m2 = new THREE.Mesh(new THREE.BoxGeometry(6, 0.08, 1.0), MAP_MARK_MAT);
+    m2.position.set(worldMidX + t, 0.04, worldMidZ);
+    group.add(m2);
+  }
+
+  // Sidewalks
+  const swMat = MAP_SW_MAT;
+  [[-1,0],[1,0],[0,-1],[0,1]].forEach(([dx,dz])=>{
+    const sw = new THREE.Mesh(new THREE.BoxGeometry(
+      dx!==0 ? 6 : CHUNK_SIZE,
+      0.15,
+      dz!==0 ? 6 : CHUNK_SIZE
+    ), swMat);
+    sw.position.set(
+      worldMidX + dx*(ROAD_HALF+3),
+      0.075,
+      worldMidZ + dz*(ROAD_HALF+3)
+    );
+    group.add(sw);
+  });
+
+  // Simple buildings using seeded-random (mirrors generateChunk logic)
+  const rng = seededRand(cx * 73856093 ^ cz * 19349663);
+  const buildingMats = [
+    new THREE.MeshLambertMaterial({color:0x2a4035}),
+    new THREE.MeshLambertMaterial({color:0x253530}),
+    new THREE.MeshLambertMaterial({color:0x304028}),
+    new THREE.MeshLambertMaterial({color:0x1e3040}),
+    new THREE.MeshLambertMaterial({color:0x382820}),
+  ];
+  const roofMat = new THREE.MeshLambertMaterial({color:0x506058});
+
+  function addMapBuilding(bx, bz, bw, bh, bd, styleIdx) {
+    const wallMat = buildingMats[styleIdx % buildingMats.length];
+    const mats = [wallMat,wallMat,roofMat,roofMat,wallMat,wallMat];
+    const body = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), mats);
+    body.position.set(bx, bh/2, bz);
+
+    // Accent glow on top edges
+    const glowMat = new THREE.MeshBasicMaterial({ color:0x335533 });
+    const rim = new THREE.Mesh(new THREE.BoxGeometry(bw+0.2, 0.3, bd+0.2), glowMat);
+    rim.position.set(bx, bh+0.15, bz);
+
+    group.add(body, rim);
+  }
+
+  if(rng() < 0.8) {
+    const bx = worldMidX + (rng()<0.5?1:-1)*(ROAD_HALF+14+rng()*8);
+    const bz = worldMidZ + (rng()<0.5?1:-1)*(ROAD_HALF+14+rng()*8);
+    addMapBuilding(bx, bz, 8+rng()*14, 6+rng()*22, 8+rng()*14, Math.floor(rng()*5));
+  }
+  if(rng() < 0.5) {
+    const bx = worldMidX + (rng()<0.5?1:-1)*(ROAD_HALF+14+rng()*8);
+    const bz = worldMidZ + (rng()<0.5?1:-1)*(ROAD_HALF+14+rng()*8);
+    addMapBuilding(bx, bz, 6+rng()*10, 6+rng()*18, 6+rng()*10, Math.floor(rng()*5));
+  }
+
+  group.userData = { cx, cz };
+  mapScene.add(group);
+  mapChunks.set(key, group);
+}
+
+function syncMapChunks() {
+  // Build map chunks for any loaded game chunks
+  for(const [key] of loadedChunks) {
+    const parts = key.split(',');
+    buildMapChunk(parseInt(parts[0]), parseInt(parts[1]));
+  }
+  // Remove map chunks no longer in game world
+  for(const [key] of mapChunks) {
+    if(!loadedChunks.has(key)) {
+      const g = mapChunks.get(key);
+      mapScene.remove(g);
+      mapChunks.delete(key);
+    }
+  }
+}
+
+// ── Car marker in 3D map scene ────────────────────────────────
+const mapCarGroup = new THREE.Group();
+// Car body (glowing yellow box)
+const mapCarBody = new THREE.Mesh(
+  new THREE.BoxGeometry(2.2, 1.0, 4.4),
+  new THREE.MeshBasicMaterial({ color: 0xe8ff00 })
+);
+mapCarBody.position.y = 0.5;
+mapCarGroup.add(mapCarBody);
+// Direction arrow cone
+const mapCarArrow = new THREE.Mesh(
+  new THREE.ConeGeometry(1.1, 2.5, 4),
+  new THREE.MeshBasicMaterial({ color: 0xe8ff00 })
+);
+mapCarArrow.rotation.x = Math.PI / 2;
+mapCarArrow.position.set(0, 1.2, -3.2);
+mapCarGroup.add(mapCarArrow);
+// Glow ring
+const mapCarRing = new THREE.Mesh(
+  new THREE.TorusGeometry(3.5, 0.25, 6, 20),
+  new THREE.MeshBasicMaterial({ color: 0x88aa00 })
+);
+mapCarRing.rotation.x = Math.PI/2;
+mapCarRing.position.y = 0.1;
+mapCarGroup.add(mapCarRing);
+mapScene.add(mapCarGroup);
+
+// ── Pedestrian dots in map scene ──────────────────────────────
+const MAP_PED_GEO  = new THREE.CylinderGeometry(0.5, 0.5, 1.5, 6);
+const MAP_PED_MAT  = new THREE.MeshBasicMaterial({ color: 0x00ffcc });
+const mapPedMeshes = [];
+function ensureMapPeds(count) {
+  while(mapPedMeshes.length < count) {
+    const m = new THREE.Mesh(MAP_PED_GEO, MAP_PED_MAT);
+    mapScene.add(m);
+    mapPedMeshes.push(m);
+  }
+}
+
+// ── Mouse orbit & zoom for the 3D map ────────────────────────
+let mapDragActive = false, mapDragLast = {x:0, y:0};
+mapCanvas.addEventListener('mousedown', e => { mapDragActive=true; mapDragLast={x:e.clientX, y:e.clientY}; });
+window.addEventListener('mouseup', () => { mapDragActive=false; });
+window.addEventListener('mousemove', e => {
+  if(!mapDragActive || !mapOpen) return;
+  const dx = e.clientX - mapDragLast.x;
+  mapDragLast = {x:e.clientX, y:e.clientY};
+  mapCamAzim += dx * 0.008;
+});
+mapCanvas.addEventListener('wheel', e => {
+  if(!mapOpen) return;
+  e.preventDefault();
+  mapCamZoom = Math.max(0.35, Math.min(3.5, mapCamZoom - e.deltaY * 0.001));
+}, { passive: false });
+
+// ── HUD overlay (compass, scale bar, labels) ─────────────────
+function drawMapHUD() {
+  const ctx = mapHudCtx;
+  const W = mapHudCanvas.width, H = mapHudCanvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  const kmh = Math.round(Math.abs(S.vLong * 3.6));
+
+  // Compass rose (top-right corner)
+  const cxPos = W - 44, cyPos = 44, cr = 28;
+  ctx.save();
+  ctx.translate(cxPos, cyPos);
+  // Outer ring
+  ctx.strokeStyle = '#e8ff0055'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(0, 0, cr, 0, Math.PI*2); ctx.stroke();
+  // Cardinal labels
+  ctx.fillStyle = '#e8ff00cc';
+  ctx.font = 'bold 9px Share Tech Mono, monospace';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const dirs = [['N',0,-cr+8],['S',0,cr-8],['W',-cr+8,0],['E',cr-8,0]];
+  dirs.forEach(([l,dx,dy]) => ctx.fillText(l, dx, dy));
+  // Rotating needle
+  const needleAngle = mapCamAzim - Math.PI; // north pointer
+  ctx.save();
+  ctx.rotate(needleAngle);
+  ctx.fillStyle = '#e8ff00'; ctx.beginPath();
+  ctx.moveTo(0,-cr*0.65); ctx.lineTo(-4,0); ctx.lineTo(4,0); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#ff3020'; ctx.beginPath();
+  ctx.moveTo(0, cr*0.65); ctx.lineTo(-4,0); ctx.lineTo(4,0); ctx.closePath(); ctx.fill();
+  ctx.restore();
+  ctx.restore();
+
+  // Scale bar (bottom-left)
+  const barY = H - 20;
+  const barWorld = 200;
+  const barPx = barWorld * (MAP_VIEW_HALF * 2 / MAP_H) * mapCamZoom * 0.5;
+  ctx.fillStyle = '#ffffff33';
+  ctx.fillRect(20, barY, barPx, 3);
+  ctx.fillStyle = '#ffffffaa';
+  ctx.font = '8px Share Tech Mono, monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText(`${barWorld}m`, 20, barY - 5);
+
+  // Speed / coords HUD (top-left of map)
+  ctx.fillStyle = '#00000088';
+  ctx.fillRect(8, 8, 180, 46);
+  ctx.fillStyle = '#e8ff00cc';
+  ctx.font = 'bold 11px Share Tech Mono, monospace';
+  ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+  ctx.fillText(`${kmh} KM/H`, 16, 14);
+  ctx.fillStyle = '#ffffff66';
+  ctx.font = '9px Share Tech Mono, monospace';
+  ctx.fillText(`X ${Math.round(S.pos.x)}  Z ${Math.round(S.pos.z)}`, 16, 32);
+
+  // Drag hint
+  ctx.fillStyle = '#ffffff22';
+  ctx.font = '8px Share Tech Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('DRAG TO ROTATE · SCROLL TO ZOOM', W/2, H - 8);
+}
+
+function toggleMap() {
+  mapOpen = !mapOpen;
+  document.getElementById('map-panel').classList.toggle('show', mapOpen);
+  if(mapOpen) {
+    syncMapChunks();
+    updateFullMap();
+  }
+}
+
+function updateFullMap() {
+  if(!mapOpen) return;
+
+  document.getElementById('map-cx').textContent  = Math.round(S.pos.x);
+  document.getElementById('map-cz').textContent  = Math.round(S.pos.z);
+  document.getElementById('map-spd').textContent = Math.round(Math.abs(S.vLong)*3.6);
+
+  // Sync map chunks with game world
+  syncMapChunks();
+
+  // Update car marker
+  mapCarGroup.position.set(S.pos.x, S.pos.y + 0.5, S.pos.z);
+  mapCarGroup.rotation.y = S.heading;
+
+  // Pulse ring
+  const t = performance.now() / 500;
+  const pulse = 1 + 0.15 * Math.sin(t);
+  mapCarRing.scale.set(pulse, pulse, pulse);
+
+  // Update pedestrian dots
+  ensureMapPeds(PEDS.length);
+  for(let i=0; i<mapPedMeshes.length; i++) {
+    if(i < PEDS.length) {
+      const pos = PEDS[i].root.position;
+      mapPedMeshes[i].position.set(pos.x, 0.75, pos.z);
+      mapPedMeshes[i].visible = true;
+    } else {
+      mapPedMeshes[i].visible = false;
+    }
+  }
+
+  updateMapCamera();
+  mapRenderer.render(mapScene, mapCamera);
+  drawMapHUD();
+}
+
+// ── 2D minimap (fast canvas draw) ────────────────────────────
+const MAP_SCALE = 0.8; // kept for compat — not used in 3D map
+function updateMinimap() {
+  const carX = S.pos.x, carZ = S.pos.z;
+  const ctx = miniCtx;
+  const W = miniCanvas.width, H = miniCanvas.height;
+  const scale = MINI_SCALE;
+  const halfW = W/2, halfH = H/2;
+
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle = '#060c06'; ctx.fillRect(0,0,W,H);
+
+  // Roads
+  const visChunkMin = Math.floor((carX-MINI_VIEW)/CHUNK_SIZE)-1;
+  const visChunkMax = Math.ceil ((carX+MINI_VIEW)/CHUNK_SIZE)+1;
+  const visChunkZMin= Math.floor((carZ-MINI_VIEW)/CHUNK_SIZE)-1;
+  const visChunkZMax= Math.ceil ((carZ+MINI_VIEW)/CHUNK_SIZE)+1;
+
+  for(let gcx=visChunkMin; gcx<=visChunkMax; gcx++) {
+    const worldChunkX = gcx*CHUNK_SIZE + CHUNK_SIZE/2;
+    const sx = halfW + (worldChunkX - ROAD_HALF - carX)*scale;
+    const roadW = ROAD_HALF*2*scale;
+    ctx.fillStyle = '#202820'; ctx.fillRect(sx, 0, roadW, H);
+  }
+  for(let gcz=visChunkZMin; gcz<=visChunkZMax; gcz++) {
+    const worldChunkZ = gcz*CHUNK_SIZE + CHUNK_SIZE/2;
+    const sz = halfH + (worldChunkZ - ROAD_HALF - carZ)*scale;
+    ctx.fillStyle = '#202820'; ctx.fillRect(0, sz, W, ROAD_HALF*2*scale);
+  }
+
+  // Buildings (approximated)
+  ctx.fillStyle = '#1a2818';
+  for(const [, group] of loadedChunks) {
+    const {cx: gcx, cz: gcz} = group.userData;
+    const ox = gcx*CHUNK_SIZE, ozz = gcz*CHUNK_SIZE;
+    [
+      [ox+CHUNK_SIZE/2+ROAD_HALF+14, ozz+CHUNK_SIZE/2+ROAD_HALF+14],
+      [ox+CHUNK_SIZE/2-ROAD_HALF-14, ozz+CHUNK_SIZE/2+ROAD_HALF+14],
+      [ox+CHUNK_SIZE/2+ROAD_HALF+14, ozz+CHUNK_SIZE/2-ROAD_HALF-14],
+      [ox+CHUNK_SIZE/2-ROAD_HALF-14, ozz+CHUNK_SIZE/2-ROAD_HALF-14],
+    ].forEach(([bx,bz]) => {
+      const sx = halfW + (bx - 20 - carX)*scale;
+      const sz = halfH + (bz - 20 - carZ)*scale;
+      const bs = 38*scale;
+      if(sx+bs > 0 && sx < W && sz+bs > 0 && sz < H) ctx.fillRect(sx, sz, bs, bs);
+    });
+  }
+
+  // Car dot
+  ctx.fillStyle = '#e8ff00';
+  ctx.shadowColor = '#e8ff00'; ctx.shadowBlur = 6;
+  ctx.save();
+  ctx.translate(halfW, halfH);
+  ctx.rotate(S.heading);
+  ctx.fillRect(-2, -3, 4, 6);
+  ctx.beginPath(); ctx.moveTo(0,-6); ctx.lineTo(-3,-3); ctx.lineTo(3,-3); ctx.closePath(); ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
+const SHIFT_BOOST_FORCE = 16000; // Newtons (safe — comparable to NOS at 18000 peak)
+const SHIFT_BOOST_MAX   = 110;   // m/s cap
+let shiftBoostActive = false;
+
+function updateShiftBooster() {
+  const shiftHeld = !!(KEYS['ShiftLeft'] || KEYS['ShiftRight']);
+  const canBoost = shiftHeld && !S.crashed && !S.inAir;
+
+  S.padBoostForce = (canBoost && S.vLong < SHIFT_BOOST_MAX) ? SHIFT_BOOST_FORCE : 0;
+
+  // HUD label
+  const label = document.getElementById('shift-boost-label');
+  const flash = document.getElementById('shift-boost-flash');
+  if(canBoost && !shiftBoostActive) {
+    shiftBoostActive = true;
+    label.style.opacity = '1';
+    flash.style.opacity = '1';
+  } else if(!canBoost && shiftBoostActive) {
+    shiftBoostActive = false;
+    label.style.opacity = '0';
+    flash.style.opacity = '0';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  RAMPS — Physical wedge ramps that launch the car into the air.
+//  Each ramp has:
+//    - A 3D wedge mesh (visible)
+//    - A launch zone (AABB) — when car enters at speed, vertVel is set
+//    - A heading: car must approach roughly aligned to get full launch
+//
+//  Launch physics:
+//    vy_launch = vLong * sin(rampAngle)   (vertical component)
+//    vx_launch = vLong * cos(rampAngle)   (horizontal component preserved)
+//    rampAngle ≈ 20°–30° depending on ramp steepness
+// ═══════════════════════════════════════════════════════════════
+const RAMPS = [];
+
+function makeRamp(x, z, heading=0, steepness=0.38) {
+  // steepness = tan(angle), 0.38 ≈ 20°, 0.58 ≈ 30°
+  const rampLen = 8, rampW = 5, rampH = rampLen * steepness;
+  const group = new THREE.Group();
+
+  // Build wedge from 6 vertices
+  const shape = new THREE.Shape();
+  shape.moveTo(0, 0);
+  shape.lineTo(rampLen, 0);
+  shape.lineTo(rampLen, rampH);
+  shape.closePath();
+  const extSettings = { depth: rampW, bevelEnabled: false };
+  const geo = new THREE.ExtrudeGeometry(shape, extSettings);
+  // Centre the extrusion width
+  geo.translate(0, 0, -rampW/2);
+
+  // Bright painted ramp material
+  const mat = new THREE.MeshLambertMaterial({ color: 0xf5a623 });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.castShadow = true; mesh.receiveShadow = true;
+  group.add(mesh);
+
+  // Painted chevron stripes on ramp surface
+  const stripeMat = new THREE.MeshLambertMaterial({ color: 0x111111 });
+  for(let i = 1; i < 4; i++) {
+    const stripe = new THREE.Mesh(
+      new THREE.BoxGeometry(0.3, 0.02, rampW - 0.2),
+      stripeMat
+    );
+    const frac = i / 4;
+    // Position along ramp slope
+    stripe.position.set(rampLen * frac, rampH * frac + 0.02, 0);
+    stripe.rotation.x = -Math.atan(steepness);
+    group.add(stripe);
+  }
+
+  // Side walls
+  const wallMat = new THREE.MeshLambertMaterial({ color: 0xcc8800 });
+  [-rampW/2, rampW/2].forEach(wz => {
+    const wall = new THREE.Mesh(
+      new THREE.BufferGeometry(),
+      wallMat
+    );
+    const pts = new Float32Array([
+      0,0,0,  rampLen,0,0,  rampLen,rampH,0,
+      0,0,0,  rampLen,rampH,0,  0,0,0,
+    ]);
+    wall.geometry.setAttribute('position', new THREE.BufferAttribute(pts, 3));
+    wall.position.z = wz;
+    group.add(wall);
+  });
+
+  group.rotation.y = heading;
+  group.position.set(x, 0, z);
+  scene.add(group);
+
+  // Launch zone: slightly in front of ramp top edge in world space
+  // We store ramp params for physics
+  RAMPS.push({
+    x, z, heading, steepness,
+    rampLen, rampW, rampH,
+    group,
+  });
+}
+
+// Place ramps at fun spots around the road
+makeRamp(  0,  20, 0,           0.42);  // N ramp, facing south
+makeRamp(  0, -20, Math.PI,     0.42);  // S ramp, facing north
+makeRamp( 20,   0, Math.PI/2,   0.38);  // E ramp, facing west
+makeRamp(-20,   0, -Math.PI/2,  0.38);  // W ramp, facing east
+makeRamp( 15,  15, Math.PI*5/4, 0.45);  // diagonal
+makeRamp(-15, -15, Math.PI/4,   0.45);  // diagonal
+
+// Check if car is on a ramp and should be launched
+function checkRampLaunch() {
+  if(S.inAir || S.crashed) return;
+  const cosH = Math.cos(S.heading), sinH = Math.sin(S.heading);
+
+  for(const ramp of RAMPS) {
+    const cosR = Math.cos(ramp.heading), sinR = Math.sin(ramp.heading);
+    // Transform car pos to ramp-local space
+    const dx = S.pos.x - ramp.x, dz = S.pos.z - ramp.z;
+    const localX =  dx * cosR + dz * sinR;  // along ramp length
+    const localZ = -dx * sinR + dz * cosR;  // across ramp width
+
+    // Check if car is within ramp footprint
+    if(localX >= -0.5 && localX <= ramp.rampLen + 0.5 &&
+       Math.abs(localZ) <= ramp.rampW / 2 + 0.5) {
+      // Height of ramp surface at this point
+      const surfaceY = Math.max(0, (localX / ramp.rampLen) * ramp.rampH);
+      // Snap car to ramp surface
+      S.pos.y = WR + surfaceY;
+
+      // At the top edge → launch!
+      if(localX > ramp.rampLen * 0.75 && Math.abs(S.vLong) > 5) {
+        const angle = Math.atan(ramp.steepness);
+        const speed = Math.abs(S.vLong);
+        S.vertVel = speed * Math.sin(angle) * 1.1;
+        S.inAir   = true;
+        S.airTime = 0;
+        S.stuntMode = true;  // stunt air, not crash air
+        // Reset stunt tracking for this jump
+        S.stuntRotX = 0;
+        S.stuntRotZ = 0;
+        S.stuntRotY = 0;
+        S.stuntLandHeading = S.heading;
+        break;
+      }
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  STUNT SYSTEM
+//  While in stunt air (launched from ramp):
+//    Q/E  → barrel roll (Z-axis rotation)
+//    W/S  → front/back flip (X-axis rotation)
+//    A/D  → spin (Y-axis)
+//
+//  Trick detection: accumulate rotation on each axis.
+//  A full 360° (2π) on any axis = one full trick.
+//
+//  Landing:
+//    - Wheels roughly down (|rollAngle| < 30°, |pitchAngle| < 40°) → clean land
+//    - Otherwise → crash
+// ═══════════════════════════════════════════════════════════════
+const STUNT_SPIN_RATE  = 3.5;   // rad/s — player-controlled rotation rate in air
+const STUNT_AIR_DRAG   = 0.3;   // gentle air resistance on horizontal vel
+
+// Stunt score tracking
+let stuntTotalScore = 0;
+let stuntDisplayTimer = 0;
+const STUNT_TRICKS = {
+  BARREL_ROLL:  { threshold: Math.PI*2, name: 'BARREL ROLL', points: 500 },
+  BACKFLIP:     { threshold: Math.PI*2, name: 'BACKFLIP',    points: 800 },
+  FRONTFLIP:    { threshold: Math.PI*2, name: 'FRONT FLIP',  points: 800 },
+  SPIN360:      { threshold: Math.PI*2, name: '360 SPIN',    points: 300 },
+};
+
+function updateStuntAir(dt) {
+  if(!S.inAir || !S.stuntMode) return;
+
+  // ── Gravity & vertical kinematics ─────────────────────────
+  S.vertVel -= P.gravity * dt;
+  S.pos.y   += S.vertVel * dt;
+
+  // Gentle horizontal drag in air (no tire forces)
+  S.vLong *= Math.exp(-STUNT_AIR_DRAG * dt);
+  S.vLat  *= Math.exp(-STUNT_AIR_DRAG * dt * 2);
+
+  // ── Air control: player rotates car ───────────────────────
+  const rollInput  = (KEYS['KeyQ'] ? 1 : 0) - (KEYS['KeyE'] ? 1 : 0);
+  const flipInput  = (KEYS['KeyW']||KEYS['ArrowUp'] ? 1 : 0) - (KEYS['KeyS']||KEYS['ArrowDown'] ? 1 : 0);
+  const spinInput  = (KEYS['KeyA']||KEYS['ArrowLeft'] ? 1 : 0) - (KEYS['KeyD']||KEYS['ArrowRight'] ? 1 : 0);
+
+  const dRoll = rollInput * STUNT_SPIN_RATE * dt;
+  const dFlip = flipInput * STUNT_SPIN_RATE * dt;
+  const dSpin = spinInput * STUNT_SPIN_RATE * dt * 0.6;
+
+  S.tumbleAngle.z += dRoll;
+  S.tumbleAngle.x += dFlip;
+  S.tumbleAngle.y += dSpin;
+
+  // Accumulate for trick scoring
+  S.stuntRotZ += Math.abs(dRoll);
+  S.stuntRotX += Math.abs(dFlip);
+  S.stuntRotY += Math.abs(dSpin);
+
+  // Move car horizontally
+  const cosH = Math.cos(S.heading), sinH = Math.sin(S.heading);
+  S.pos.x += (S.vLong * sinH + S.vLat * cosH) * dt;
+  S.pos.z += (S.vLong * cosH - S.vLat * sinH) * dt;
+
+  S.airTime += dt;
+
+  // ── Landing check ─────────────────────────────────────────
+  if(S.pos.y <= WR && S.vertVel < 0) {
+    S.pos.y = WR;
+
+    // Normalise tumble angles to [-π, π]
+    const normAngle = a => ((a % (Math.PI*2)) + Math.PI*2) % (Math.PI*2);
+    const roll  = normAngle(S.tumbleAngle.z);
+    const pitch = normAngle(S.tumbleAngle.x);
+
+    // Determine if landing wheels-down
+    // "Upright" = roll near 0 or 2π, pitch near 0 or 2π
+    const rollOk  = roll  < 0.55 || roll  > Math.PI*2 - 0.55;
+    const pitchOk = pitch < 0.65 || pitch > Math.PI*2 - 0.65;
+    const cleanLand = rollOk && pitchOk;
+
+    if(cleanLand) {
+      // ── CLEAN LANDING: score tricks & resume driving ──────
+      scoreTricks();
+      S.inAir      = false;
+      S.stuntMode  = false;
+      S.airTime    = 0;
+      S.vertVel    = 0;
+      // Reset visual angles to upright
+      S.tumbleAngle.set(0, S.heading, 0);
+      S.rollAngle   = 0;
+      S.pitchAngle  = 0;
+      S.rollVel     = 0;
+      S.pitchVel    = 0;
+      // Landing impact absorbs some speed
+      S.vLong *= 0.75;
+      S.vLat  *= 0.4;
+      // Land thud sound
+      playBang(Math.abs(S.vLong) * 0.3, 180);
+    } else {
+      // ── BAD LANDING: tumble crash ─────────────────────────
+      S.stuntMode = false;
+      // Hand off to crash tumble system
+      S.vertVel = -S.vertVel * 0.3;
+      S.tumbleOmega.set(
+        (Math.random()-0.5) * 6,
+        S.yawRate * 0.5,
+        (Math.random()-0.5) * 8,
+      );
+      setTimeout(() => triggerCrashState(), 1200);
+    }
+  }
+}
+
+function scoreTricks() {
+  const tricks = [];
+  // Each full 360° on an axis = one trick
+  const rolls   = Math.floor(S.stuntRotZ / (Math.PI*2));
+  const flips   = Math.floor(S.stuntRotX / (Math.PI*2));
+  const spins   = Math.floor(S.stuntRotY / (Math.PI*2));
+
+  // Determine flip direction from final tumble angle
+  const flipAngleNorm = ((S.tumbleAngle.x % (Math.PI*2)) + Math.PI*2) % (Math.PI*2);
+  const isBackflip = flipAngleNorm > Math.PI;
+
+  for(let i = 0; i < rolls; i++)  tricks.push(STUNT_TRICKS.BARREL_ROLL);
+  for(let i = 0; i < flips; i++)  tricks.push(isBackflip ? STUNT_TRICKS.BACKFLIP : STUNT_TRICKS.FRONTFLIP);
+  for(let i = 0; i < spins; i++)  tricks.push(STUNT_TRICKS.SPIN360);
+
+  if(tricks.length === 0) return;
+
+  // Combo multiplier
+  const combo = tricks.length;
+  let pts = tricks.reduce((sum, t) => sum + t.points, 0) * combo;
+  stuntTotalScore += pts;
+
+  // Build display string
+  const names = tricks.map(t => t.name).join(' + ');
+  const comboStr = combo > 1 ? ` x${combo} COMBO!` : '!';
+
+  const scoreEl = document.getElementById('stunt-score');
+  const trickEl = document.getElementById('stunt-trick');
+  const totalEl = document.getElementById('stunt-total');
+
+  scoreEl.textContent = '+' + pts.toLocaleString();
+  trickEl.textContent = names + comboStr;
+  totalEl.textContent = 'SCORE: ' + stuntTotalScore.toLocaleString();
+
+  scoreEl.classList.add('show');
+  trickEl.classList.add('show');
+
+  // Animate score counting up then fade
+  stuntDisplayTimer = 2.5;
+}
+
+function updateStuntHUD(dt) {
+  // Air indicator
+  const airEl = document.getElementById('air-indicator');
+  if(S.inAir && S.stuntMode && !S.crashed) {
+    airEl.classList.add('show');
+  } else {
+    airEl.classList.remove('show');
+  }
+
+  if(stuntDisplayTimer > 0) {
+    stuntDisplayTimer -= dt;
+    if(stuntDisplayTimer <= 0) {
+      stuntDisplayTimer = 0;
+      document.getElementById('stunt-score').classList.remove('show');
+      document.getElementById('stunt-trick').classList.remove('show');
+    }
+  }
+}
+
+// ─── CAR MESH BUILDER ─────────────────────────────────────────
+const CAR = new THREE.Group();
+scene.add(CAR);
+
+// ── PBR car body material — deep metallic paint ───────────────
+const carBodyMat = new THREE.MeshStandardMaterial({
+  color: 0x8b1a1a,       // deep crimson red
+  roughness: 0.25,
+  metalness: 0.6,
+  envMapIntensity: 1.0,
+});
+const carUnderbodyMat = new THREE.MeshStandardMaterial({
+  color: 0x141414, roughness: 0.85, metalness: 0.2,
+});
+const carGlassMat = new THREE.MeshStandardMaterial({
+  color: 0x88aacc, roughness: 0.05, metalness: 0.0,
+  transparent: true, opacity: 0.35,
+});
+const carTrimMat = new THREE.MeshStandardMaterial({
+  color: 0x1a1a1a, roughness: 0.5, metalness: 0.7,
+});
+
+function bx(w,h,d,c,em=0,mat=null){
+  const m = mat || new THREE.MeshStandardMaterial({
+    color:c, emissive:new THREE.Color(em), roughness:0.3, metalness:0.5
+  });
+  return new THREE.Mesh(new THREE.BoxGeometry(w,h,d), m);
+}
+
+const carParts = {}; // named parts for crumple deformation
+
+const chassis = bx(2,.55,4.2,0,0,carBodyMat); chassis.position.y=.5; chassis.castShadow=true; CAR.add(chassis); carParts.chassis=chassis;
+const cabin   = bx(1.7,.5,2.0,0,0,carBodyMat); cabin.position.set(0,1.02,-.1); cabin.castShadow=true; CAR.add(cabin); carParts.cabin=cabin;
+const hood    = bx(1.9,.07,1.4,0,0,carBodyMat); hood.position.set(0,.79,1.2); hood.castShadow=true; CAR.add(hood); carParts.hood=hood;
+const front   = bx(1.95,.35,.15,0,0,carBodyMat); front.position.set(0,.55,2.1); CAR.add(front); carParts.front=front;
+const rear    = bx(1.95,.35,.15,0,0,carBodyMat); rear.position.set(0,.55,-2.1); CAR.add(rear); carParts.rear=rear;
+const sL      = bx(.08,.25,3.8,0,0,carUnderbodyMat); sL.position.set(-1.04,.38,0); CAR.add(sL);
+const sR      = sL.clone(); sR.position.x=1.04; CAR.add(sR);
+const ws      = bx(1.55,.38,.06,0,0,carGlassMat); ws.position.set(0,1.0,.9); CAR.add(ws); carParts.windscreen=ws;
+const rwn     = bx(1.9,.07,.5,0,0,carBodyMat); rwn.position.set(0,1.35,-2.0); CAR.add(rwn);
+const spL     = bx(.06,.35,.12,0,0,carTrimMat); spL.position.set(-.85,1.15,-2.0); CAR.add(spL);
+const spR     = spL.clone(); spR.position.x=.85; CAR.add(spR);
+// Side skirts
+const skirtL = bx(.05,.12,3.4,0,0,carTrimMat); skirtL.position.set(-1.04,.3,0); CAR.add(skirtL);
+const skirtR = skirtL.clone(); skirtR.position.x=1.04; CAR.add(skirtR);
+// Roof panel
+const roof = bx(1.65,.06,1.8,0,0,carBodyMat); roof.position.set(0,1.32,-.1); CAR.add(roof);
+
+
+// ── NOS EXHAUST NOZZLES ────────────────────────────────────
+const nozzleGeo = new THREE.CylinderGeometry(0.08, 0.12, 0.28, 8);
+const nozzleMat = new THREE.MeshStandardMaterial({color:0x444444, roughness:0.3, metalness:0.9});
+const nozzleL = new THREE.Mesh(nozzleGeo, nozzleMat);
+nozzleL.rotation.x = Math.PI/2; nozzleL.position.set(-0.55,0.42,-2.18); CAR.add(nozzleL);
+const nozzleR = nozzleL.clone(); nozzleR.position.x=0.55; CAR.add(nozzleR);
+
+// Flame cones — scale.set(0,0,0) when off
+const flameL = new THREE.Mesh(
+  new THREE.ConeGeometry(0.14,1.1,8),
+  new THREE.MeshBasicMaterial({color:0xff7700,transparent:true,opacity:.9})
+);
+flameL.rotation.x=-Math.PI/2; flameL.position.set(-0.55,0.42,-2.8); flameL.scale.set(0,0,0); CAR.add(flameL);
+const flameR = new THREE.Mesh(
+  new THREE.ConeGeometry(0.14,1.1,8),
+  new THREE.MeshBasicMaterial({color:0xff7700,transparent:true,opacity:.9})
+);
+flameR.rotation.x=-Math.PI/2; flameR.position.set(0.55,0.42,-2.8); flameR.scale.set(0,0,0); CAR.add(flameR);
+
+// White hot core
+const coreL = new THREE.Mesh(
+  new THREE.ConeGeometry(0.07,0.55,8),
+  new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.95})
+);
+coreL.rotation.x=-Math.PI/2; coreL.position.set(-0.55,0.42,-2.58); coreL.scale.set(0,0,0); CAR.add(coreL);
+const coreR = coreL.clone(); coreR.position.x=0.55; coreR.scale.set(0,0,0); CAR.add(coreR);
+
+// Boost point light (orange, attached to rear)
+const boostLight = new THREE.PointLight(0xff6600, 0, 12);
+boostLight.position.set(0, 0.5, -3.0);
+CAR.add(boostLight);
+[-.55,.55].forEach(x=>{
+  const h=new THREE.Mesh(new THREE.BoxGeometry(.28,.12,.04),new THREE.MeshBasicMaterial({color:0xeeeeff}));
+  h.position.set(x,.62,2.12); CAR.add(h);
+  const pl=new THREE.PointLight(0xeeeeff,0.2,10); pl.position.copy(h.position); CAR.add(pl);
+});
+[-.55,.55].forEach(x=>{
+  const t=new THREE.Mesh(new THREE.BoxGeometry(.28,.12,.04),new THREE.MeshBasicMaterial({color:0xff1100}));
+  t.position.set(x,.62,-2.12); CAR.add(t);
+});
+
+// Wheels
+const WR=.33, WW=.22;function makeWheel(){
+  const g=new THREE.Group();
+  const tireMat  = new THREE.MeshStandardMaterial({color:0x0f0f0f, roughness:0.96, metalness:0.0});
+  const rimMat   = new THREE.MeshStandardMaterial({color:0xcccccc, roughness:0.12, metalness:0.98});
+  const spokeMat = new THREE.MeshStandardMaterial({color:0xaaaaaa, roughness:0.18, metalness:0.95});
+  const t=new THREE.Mesh(new THREE.CylinderGeometry(WR,WR,WW,24), tireMat);
+  t.rotation.z=Math.PI/2;
+  const r=new THREE.Mesh(new THREE.CylinderGeometry(WR*.6,WR*.6,WW+.01,8), rimMat);
+  r.rotation.z=Math.PI/2;
+  for(let i=0;i<5;i++){const s=new THREE.Mesh(new THREE.BoxGeometry(WW+.01,WR*.07,WR*.9),spokeMat);s.rotation.x=(i/5)*Math.PI;g.add(s);}
+  g.add(t,r); return g;
+}
+const WPOS=[new THREE.Vector3(-1.05,WR,1.35),new THREE.Vector3(1.05,WR,1.35),new THREE.Vector3(-1.05,WR,-1.35),new THREE.Vector3(1.05,WR,-1.35)];
+const wMesh=WPOS.map(p=>{const w=makeWheel();w.position.copy(p);w.castShadow=true;return w;});
+const FL_piv=new THREE.Group(); FL_piv.position.copy(WPOS[0]); FL_piv.add(wMesh[0]); wMesh[0].position.set(0,0,0);
+const FR_piv=new THREE.Group(); FR_piv.position.copy(WPOS[1]); FR_piv.add(wMesh[1]); wMesh[1].position.set(0,0,0);
+wMesh[2].position.copy(WPOS[2]); wMesh[3].position.copy(WPOS[3]);
+CAR.add(FL_piv,FR_piv,wMesh[2],wMesh[3]);
+
+// ═══════════════════════════════════════════════════════════════
+//  PHYSICS CONSTANTS
+// ═══════════════════════════════════════════════════════════════
+const P = {
+  mass: 1200,          // kg
+  wheelbase: 2.7,      // m
+  cgHeight: 0.52,      // m  — slightly higher for easier rollover demo
+  trackWidth: 2.1,     // m
+  cgToFront: 1.35,     // m
+  cgToRear: 1.35,      // m
+  // Drivetrain
+  engineTorqueMax: 380, gearRatios:[0,3.5,2.1,1.45,1.1,.85,.70], finalDrive:3.7, wheelInertia:1.2,
+  brakeTorqueFront:2200, brakeTorqueRear:1600,
+  // Aero
+  dragCoeff:.30, frontalArea:2.0, airDensity:1.225, downforceCoeff:.8,
+  // Tires
+  tireMuLat:1.35, tireMuLong:1.25,
+  maxSteerAngle:.42, steerRate:3.0,
+  gravity:9.81,
+  // Crash
+  restitution: 0.15,     // coefficient of restitution (0=perfectly inelastic, 1=elastic)
+  crumpleStiffness: 4e6, // N/m — Hertzian contact
+  crumpleArea: 0.8,      // m² front/rear crumple zone area
+
+  // ── NITROUS BOOST ─────────────────────────────────────────────
+  nosMaxThrust:   18000,  // N peak thrust
+  nosDuration:    2.2,    // s per charge
+  nosRechargeTime:8.0,    // s to recharge one charge
+  nosCooldownTime:0.4,    // s minimum between triggers
+  nosMaxCharges:  3,
+
+  // ── HANDBRAKE ─────────────────────────────────────────────────
+  // Rear tire mu drops dramatically when wheels lock
+  hbMuFactor:     0.12,   // fraction of normal lateral grip when locked
+  hbLongFactor:   0.06,   // fraction of longitudinal grip when locked
+
+  // ── ROLLOVER (Static Stability Factor) ──────────────────────
+  // SSF = T / (2h)  →  rollover if lateral-g exceeds SSF
+  // T = track width, h = CG height
+  // Additional dynamic factor: roll angle φ from suspension compliance
+  rollSuspCompliance: 0.006,  // rad per N·m of roll moment
+  get SSF() { return this.trackWidth / (2 * this.cgHeight); },
+
+  // Moment of inertia (box approximation)
+  // I = m(a²+b²)/12  for rotation about axis through CG
+  get Ixx() { return this.mass * ((0.8*0.8) + (this.cgHeight*2)**2) / 12; }, // roll
+  get Iyy() { return this.mass * ((this.wheelbase**2) + (1.5**2)) / 12; },   // pitch
+  get Izz() { return this.mass * ((this.wheelbase**2) + (this.trackWidth**2)) / 12; }, // yaw
+};
+
+// ─── VEHICLE STATE ─────────────────────────────────────────────
+const S = {
+  pos: new THREE.Vector3(0, WR, 0),
+  vel: new THREE.Vector3(),
+  heading: 0,
+  vLong: 0, vLat: 0, yawRate: 0,
+  wheelSpeeds: [0,0,0,0],
+  steerAngle: 0,
+  throttle: 0, brakeInput: 0, handbrake: false,
+  gear: 1, rpm: 800,
+  slipAngle: 0, lateralG: 0,
+  distTravelled: 0,
+
+  // Roll state (damped harmonic oscillator)
+  rollAngle: 0,       // rad — actual body roll
+  rollVel: 0,         // rad/s — roll angular velocity
+  pitchAngle: 0,
+  pitchVel: 0,
+
+  // Crash state
+  crashed: false,
+  rolling: false,     // mid-rollover
+  crashCause: '',
+  impactSpeed: 0,
+  peakG: 0,
+  keBeforeCrash: 0,
+  keLost: 0,
+
+  // Tumble angular velocity (world-space, after rollover launch)
+  tumbleOmega: new THREE.Vector3(),   // rad/s [roll, pitch, yaw]
+  tumbleAngle: new THREE.Vector3(),   // integrated Euler angles (rad)
+  inAir: false,
+  airTime: 0,
+  vertVel: 0,         // m/s vertical velocity during tumble
+
+  // Camera
+  camAngle: 0, camDist: 11, camHeight: 4,
+
+  // ── NITROUS BOOST ────────────────────────────────────────
+  // Physics: F_nos = nosThrust N applied as longitudinal impulse
+  // Each charge = BOOST_DURATION seconds of thrust
+  // Thrust decays: F(t) = F0 * (1 - t/dur)  (linear taper off)
+  nosActive: false,
+  nosDuration: 0,      // remaining boost time this charge (s)
+  nosCharges: 3,       // charges available (max 3)
+  nosRecharge: 0,      // recharge timer (s)
+  nosForce: 0,         // current applied thrust (N)
+  nosCooldown: 0,      // cooldown between triggers (s)
+
+  // ── HANDBRAKE ────────────────────────────────────────────
+  // Physics: rear wheel friction coeff drops to k_hb * mu_lat
+  // Rear wheels lock → κ (slip ratio) → approaches -1 (pure sliding)
+  // Results in large rear slip angle α_R → oversteer yaw moment
+  handbrakeActive: false,
+  hbSlipAngle: 0,      // rear slip angle while handbraking (rad)
+  hbSmokeTimer: 0,     // timer for smoke emission (s)
+
+  // ── BOOST PAD ────────────────────────────────────────────
+  padBoostForce: 0,    // N — set each frame by updateBoostPads, read by physicsStep
+
+  // ── STUNT ─────────────────────────────────────────────────
+  stuntMode:  false,   // true = in-air from ramp (not crash tumble)
+  stuntRotX:  0,       // accumulated flip rotation (rad)
+  stuntRotZ:  0,       // accumulated roll rotation (rad)
+  stuntRotY:  0,       // accumulated spin rotation (rad)
+  stuntLandHeading: 0,
+};
+
+// ─── DEBRIS SYSTEM ─────────────────────────────────────────────
+// Each debris: { mesh, pos, vel, angVel, age, lifetime }
+// Kinematics: y(t) = y0 + vy*t - 0.5*g*t²  (ballistic trajectory)
+const DEBRIS = [];
+const DEBRIS_POOL = [];
+
+function spawnDebris(origin, impactVel, count=12) {
+  for(let i=0;i<count;i++){
+    const size = .05 + Math.random()*.25;
+    let mesh;
+    if(DEBRIS_POOL.length > 0) {
+      mesh = DEBRIS_POOL.pop();
+      mesh.visible = true;
+      mesh.scale.set(size,size,size);
+    } else {
+      const geo = Math.random() > .5
+        ? new THREE.BoxGeometry(size, size*.6, size*.8)
+        : new THREE.TetrahedronGeometry(size*.7);
+      mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({
+        color: new THREE.Color().setHSL(0, 0, .1 + Math.random()*.15),
+      }));
+      scene.add(mesh);
+    }
+    // Initial velocity: impact velocity + random scatter (cone distribution)
+    // v_debris = v_impact * bounce_factor + random_hemisphere
+    const speed = impactVel * (.2 + Math.random()*.5);
+    const theta = Math.random() * Math.PI * 2;
+    const phi   = Math.random() * Math.PI * .5; // upward hemisphere
+
+    // Trigonometry: spherical → cartesian
+    // vx = speed·sin(φ)·cos(θ), vy = speed·cos(φ) (upward), vz = speed·sin(φ)·sin(θ)
+    const vel = new THREE.Vector3(
+      speed * Math.sin(phi) * Math.cos(theta) + (Math.random()-.5) * impactVel * .3,
+      speed * Math.cos(phi) * (.5 + Math.random()*.5),
+      speed * Math.sin(phi) * Math.sin(theta) + (Math.random()-.5) * impactVel * .3,
+    );
+
+    // Angular velocity for tumbling debris
+    const angVel = new THREE.Vector3(
+      (Math.random()-.5)*20,
+      (Math.random()-.5)*20,
+      (Math.random()-.5)*20,
+    );
+
+    mesh.position.copy(origin).add(new THREE.Vector3((Math.random()-.5)*1.5, Math.random()*.8, (Math.random()-.5)*1.5));
+
+    DEBRIS.push({ mesh, vel, angVel, age:0, lifetime: 4+Math.random()*3, bounces:0 });
+  }
+}
+
+function updateDebris(dt) {
+  for(let i = DEBRIS.length-1; i>=0; i--) {
+    const d = DEBRIS[i];
+    d.age += dt;
+
+    // ── PROJECTILE KINEMATICS ─────────────────────────────
+    // y(t) = y₀ + vy·t - ½·g·t²  →  differentiated: vy' = vy - g·dt
+    d.vel.y -= P.gravity * dt;
+    d.mesh.position.x += d.vel.x * dt;
+    d.mesh.position.y += d.vel.y * dt;
+    d.mesh.position.z += d.vel.z * dt;
+
+    // Ground bounce: elastic collision with ground plane (y=0)
+    // v_y' = -e · v_y  (coefficient of restitution for debris ~0.4)
+    if(d.mesh.position.y < 0.05 && d.vel.y < 0) {
+      d.mesh.position.y = 0.05;
+      d.vel.y = -d.vel.y * 0.38;
+      d.vel.x *= 0.75; d.vel.z *= 0.75; // friction
+      d.angVel.multiplyScalar(0.6);
+      d.bounces++;
+    }
+
+    // Euler angle integration for tumbling
+    // dθ/dt = ω  →  θ += ω·dt  (decaying: ω *= e^{-γ·dt})
+    d.mesh.rotation.x += d.angVel.x * dt;
+    d.mesh.rotation.y += d.angVel.y * dt;
+    d.mesh.rotation.z += d.angVel.z * dt;
+    const angDecay = Math.exp(-2.0 * dt);
+    d.angVel.multiplyScalar(angDecay);
+
+    // Fade out
+    if(d.age > d.lifetime - 1.0) {
+      const fade = 1 - (d.age - (d.lifetime-1.0));
+      d.mesh.material.opacity = Math.max(0, fade);
+      d.mesh.material.transparent = true;
+    }
+
+    if(d.age >= d.lifetime) {
+      d.mesh.visible = false;
+      d.mesh.material.opacity = 1;
+      d.mesh.material.transparent = false;
+      DEBRIS_POOL.push(d.mesh);
+      DEBRIS.splice(i,1);
+    }
+  }
+}
+
+// ─── CRUMPLE DEFORMATION ──────────────────────────────────────
+// Visually deform car parts based on impact normal and energy
+function crumplePart(partName, deformVec, amount) {
+  const part = carParts[partName];
+  if(!part) return;
+  // Scale the geometry along impact axis
+  const amt = Math.min(.5, amount);
+  part.scale.z = Math.max(.3, part.scale.z - amt * .4);
+  part.scale.x = Math.min(1.4, part.scale.x + amt * .15);
+  part.scale.y = Math.min(1.2, part.scale.y + amt * .1);
+  part.position.z += deformVec.z * amt * .3;
+  part.position.y -= amt * .08;
+  // Random rotation for realistic buckling
+  part.rotation.x += (Math.random()-.5) * amt * .3;
+  part.rotation.z += (Math.random()-.5) * amt * .2;
+}
+
+// ─── SMOKE PARTICLES (post-crash) ─────────────────────────────
+const SMOKE = [];
+function spawnSmoke(pos) {
+  for(let i=0;i<8;i++){
+    const s = new THREE.Mesh(
+      new THREE.SphereGeometry(.3+Math.random()*.4,6,6),
+      new THREE.MeshBasicMaterial({color:0x333333,transparent:true,opacity:.5})
+    );
+    s.position.copy(pos).add(new THREE.Vector3((Math.random()-.5),.5+Math.random(),(Math.random()-.5)));
+    const vel = new THREE.Vector3((Math.random()-.5)*.4, .5+Math.random()*.8, (Math.random()-.5)*.4);
+    scene.add(s);
+    SMOKE.push({mesh:s,vel,age:0,lt:2+Math.random()*2});
+  }
+}
+function updateSmoke(dt){
+  for(let i=SMOKE.length-1;i>=0;i--){
+    const s=SMOKE[i]; s.age+=dt;
+    s.mesh.position.addScaledVector(s.vel,dt);
+    s.vel.y*=.98;
+    s.mesh.scale.multiplyScalar(1+dt*.3);
+    s.mesh.material.opacity=Math.max(0,.5*(1-s.age/s.lt));
+    if(s.age>=s.lt){scene.remove(s.mesh);SMOKE.splice(i,1);}
+  }
+}
+
+// Tire smoke (white/grey) for handbrake sliding
+function spawnTireSmoke(pos) {
+  for(let i=0;i<2;i++){
+    const s = new THREE.Mesh(
+      new THREE.SphereGeometry(.12+Math.random()*.1, 5, 5),
+      new THREE.MeshBasicMaterial({color:0xcccccc, transparent:true, opacity:.55})
+    );
+    s.position.copy(pos).add(new THREE.Vector3((Math.random()-.5)*.2, .05, (Math.random()-.5)*.2));
+    const vel = new THREE.Vector3((Math.random()-.5)*.3, .2+Math.random()*.3, (Math.random()-.5)*.3);
+    scene.add(s);
+    SMOKE.push({mesh:s, vel, age:0, lt:.8+Math.random()*.5});
+  }
+}
+
+// NOS exhaust particle burst
+function spawnNOSParticle() {
+  const s = new THREE.Mesh(
+    new THREE.SphereGeometry(.06+Math.random()*.08, 4, 4),
+    new THREE.MeshBasicMaterial({color:new THREE.Color().setHSL(.08+Math.random()*.05, 1, .6+Math.random()*.3), transparent:true, opacity:.8})
+  );
+  const cosH=Math.cos(S.heading), sinH=Math.sin(S.heading);
+  // Offset behind car in world space
+  s.position.set(
+    S.pos.x - sinH*2.5 + (Math.random()-.5)*.25,
+    S.pos.y + .42,
+    S.pos.z - cosH*2.5 + (Math.random()-.5)*.25
+  );
+  // Velocity: backward (opposite car heading) + spray
+  const spd = 4+Math.random()*3;
+  const vel = new THREE.Vector3(
+    -sinH*spd + (Math.random()-.5)*.5,
+    (Math.random()-.5)*.4,
+    -cosH*spd + (Math.random()-.5)*.5
+  );
+  scene.add(s);
+  SMOKE.push({mesh:s, vel, age:0, lt:.4+Math.random()*.3});
+}
+
+// ─── PACEJKA (simplified) ─────────────────────────────────────
+function pacejka(slip,mu,B=10,C=1.9,E=.97){
+  return mu*Math.sin(C*Math.atan(B*C*slip - E*(B*C*slip - Math.atan(B*C*slip))));
+}
+function engineTorqueCurve(f){ return Math.max(0,-2.5*f*f+2.5*f+.4)*1.1; }
+
+// ─── INPUT ────────────────────────────────────────────────────
+const KEYS = {};
+window.addEventListener('keydown', e => {
+  KEYS[e.code] = true;
+  if(e.code==='KeyM') toggleMap();
+  if(e.code==='KeyR') resetCar();
+  if(e.code==='KeyF') triggerNOS();
+  if(e.code==='KeyX') toggleMute();
+  if(e.code==='KeyH') playHorn();
+  e.preventDefault();
+},{passive:false});
+window.addEventListener('keyup', e => { KEYS[e.code]=false; });
+
+// ─── MOBILE / TOUCH INPUT ────────────────────────────────────
+const isMobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+if(isMobile) document.body.classList.add('is-mobile');
+
+// Virtual joystick state
+const JOY = { active: false, id: null, baseX: 0, baseY: 0, dx: 0, dy: 0 };
+const JOY_RADIUS = 50; // max displacement in px
+
+const joyZone  = document.getElementById('joy-zone');
+const joyBase  = document.getElementById('joy-base');
+const joyKnob  = document.getElementById('joy-knob');
+
+function joyStart(e) {
+  if(JOY.active) return;
+  const t = e.changedTouches[0];
+  JOY.active = true; JOY.id = t.identifier;
+  const rect = joyZone.getBoundingClientRect();
+  JOY.baseX = t.clientX - rect.left;
+  JOY.baseY = t.clientY - rect.top;
+  JOY.dx = 0; JOY.dy = 0;
+  joyBase.style.left = JOY.baseX + 'px';
+  joyBase.style.top  = JOY.baseY + 'px';
+  joyBase.style.display = 'block';
+  joyKnob.style.left = JOY.baseX + 'px';
+  joyKnob.style.top  = JOY.baseY + 'px';
+  joyKnob.style.display = 'block';
+}
+function joyMove(e) {
+  if(!JOY.active) return;
+  for(const t of e.changedTouches) {
+    if(t.identifier !== JOY.id) continue;
+    const rect = joyZone.getBoundingClientRect();
+    let rawDx = (t.clientX - rect.left) - JOY.baseX;
+    let rawDy = (t.clientY - rect.top)  - JOY.baseY;
+    const dist = Math.hypot(rawDx, rawDy);
+    if(dist > JOY_RADIUS) { rawDx *= JOY_RADIUS/dist; rawDy *= JOY_RADIUS/dist; }
+    JOY.dx = rawDx / JOY_RADIUS;  // -1..1
+    JOY.dy = rawDy / JOY_RADIUS;  // -1..1 (positive = down = brake)
+    joyKnob.style.left = (JOY.baseX + rawDx) + 'px';
+    joyKnob.style.top  = (JOY.baseY + rawDy) + 'px';
+  }
+}
+function joyEnd(e) {
+  for(const t of e.changedTouches) {
+    if(t.identifier !== JOY.id) continue;
+    JOY.active = false; JOY.dx = 0; JOY.dy = 0;
+    joyBase.style.display = 'none';
+    joyKnob.style.display = 'none';
+  }
+}
+joyZone.addEventListener('touchstart', joyStart, {passive:true});
+joyZone.addEventListener('touchmove',  joyMove,  {passive:true});
+joyZone.addEventListener('touchend',   joyEnd,   {passive:true});
+joyZone.addEventListener('touchcancel',joyEnd,   {passive:true});
+
+// Button press helper
+function setupBtn(id, onDown, onUp) {
+  const el = document.getElementById(id);
+  if(!el) return;
+  function down(e) { e.preventDefault(); el.classList.add('pressed'); onDown && onDown(); }
+  function up(e)   { e.preventDefault(); el.classList.remove('pressed'); onUp && onUp(); }
+  el.addEventListener('touchstart', down, {passive:false});
+  el.addEventListener('touchend',   up,   {passive:false});
+  el.addEventListener('touchcancel',up,   {passive:false});
+  // Also support mouse clicks for desktop testing
+  el.addEventListener('mousedown', down);
+  el.addEventListener('mouseup',   up);
+}
+
+// Track which mobile buttons are held
+const MOBILEKEYS = { gas:false, brake:false, nos:false, hb:false };
+
+setupBtn('btn-gas',   () => { MOBILEKEYS.gas   = true;  }, () => { MOBILEKEYS.gas   = false; });
+setupBtn('btn-brake', () => { MOBILEKEYS.brake = true;  }, () => { MOBILEKEYS.brake = false; });
+setupBtn('btn-nos',   () => { triggerNOS();              }, null);
+setupBtn('btn-hb',    () => { MOBILEKEYS.hb    = true;  }, () => { MOBILEKEYS.hb    = false; });
+setupBtn('btn-horn',  () => { playHorn();                }, null);
+setupBtn('btn-reset', () => { resetCar();                }, null);
+setupBtn('btn-map',   () => { toggleMap();               }, null);
+setupBtn('btn-mute',  () => { toggleMute();              }, null);
+
+// Inject mobile inputs into the KEYS object each physics frame
+function injectMobileKeys() {
+  if(!isMobile) return;
+  // Gas/brake: button OR joystick Y axis
+  KEYS['KeyW'] = KEYS['ArrowUp']    = MOBILEKEYS.gas   || JOY.dy < -0.15;
+  KEYS['KeyS'] = KEYS['ArrowDown']  = MOBILEKEYS.brake || JOY.dy >  0.15;
+  // Steer: joystick X axis (also injected as analog separately)
+  KEYS['KeyA'] = KEYS['ArrowLeft']  = JOY.dx < -0.15;
+  KEYS['KeyD'] = KEYS['ArrowRight'] = JOY.dx >  0.15;
+  // Handbrake button
+  KEYS['Space']                     = MOBILEKEYS.hb;
+}
+
+
+// ── Car Horn ─────────────────────────────────────────────────
+// Classic car horn: two-tone beep using sine oscillators with attack/release envelope
+function playHorn() {
+  if (!audioReady || audioMuted) return;
+  const ctx = audioCtx, now = ctx.currentTime;
+
+  // Two-tone horn (A5 + E5, a perfect fifth apart)
+  const freqs = [880, 659.25];
+  freqs.forEach((freq, i) => {
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, now);
+
+    const g = ctx.createGain();
+    // Quick attack, sustain, then fast release
+    g.gain.setValueAtTime(0, now);
+    g.gain.linearRampToValueAtTime(0.35, now + 0.02);
+    g.gain.setValueAtTime(0.35, now + 0.28);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.42);
+
+    // Add slight distortion for a more "car horn" character
+    const dist = ctx.createWaveShaper();
+    dist.curve = makeDistortionCurve(30);
+
+    osc.connect(dist); dist.connect(g); g.connect(AUD.masterGain);
+    osc.start(now); osc.stop(now + 0.45);
+  });
+}
+
+// ─── NITROUS TRIGGER ──────────────────────────────────────────
+// Physics: applying F_nos as a longitudinal body force
+// ΔV per charge ≈ (nosMaxThrust * nosDuration) / mass
+//              ≈ (18000 * 2.2) / 1200 ≈ 33 m/s ≈ 119 km/h added
+// In practice less due to linear taper and drag opposing
+function triggerNOS() {
+  if(S.crashed || S.inAir) return;
+  if(S.nosCooldown > 0) return;     // cooldown not done
+  if(S.nosCharges <= 0) return;     // no charges left
+  if(S.nosActive) return;           // already firing
+
+  S.nosActive   = true;
+  S.nosCharges -= 1;
+  S.nosDuration = P.nosDuration;
+  S.nosCooldown = P.nosCooldownTime;
+  playNOSpop(); // ignition pop
+}
+function resetCar() {
+  S.pos.set(0,WR,0); S.vel.set(0,0,0);
+  S.heading=0; S.vLong=0; S.vLat=0; S.yawRate=0;
+  S.wheelSpeeds=[0,0,0,0]; S.steerAngle=0;
+  S.throttle=0; S.brakeInput=0; S.gear=1; S.rpm=800;
+  S.rollAngle=0; S.rollVel=0; S.pitchAngle=0; S.pitchVel=0;
+  S.crashed=false; S.rolling=false; S.inAir=false; S.airTime=0; S.vertVel=0;
+  S.tumbleOmega.set(0,0,0); S.tumbleAngle.set(0,0,0);
+  S.lateralG=0; S.slipAngle=0; S.peakG=0; S.keLost=0;
+  S.camAngle=0;
+  // Reset boost & handbrake
+  S.nosActive=false; S.nosDuration=0; S.nosCharges=P.nosMaxCharges;
+  S.nosRecharge=0; S.nosForce=0; S.nosCooldown=0;
+  S.handbrakeActive=false; S.hbSlipAngle=0; S.hbSmokeTimer=0;
+  // Hide flames
+  [flameL,flameR,coreL,coreR].forEach(f=>f.scale.set(0,0,0));
+  boostLight.intensity=0;
+
+  // Reset visual deformation
+  Object.values(carParts).forEach(p=>{
+    p.scale.set(1,1,1); p.rotation.set(0,0,0);
+    // Restore original positions
+  });
+  hood.position.set(0,.79,1.2);
+  front.position.set(0,.55,2.1);
+  rear.position.set(0,.55,-2.1);
+  cabin.position.set(0,1.02,-.1);
+  ws.position.set(0,1.0,.9);
+
+  CAR.rotation.set(0,0,0);
+  CAR.visible=true;
+
+  document.getElementById('crash-overlay').classList.remove('show');
+  shiftBoostActive = false;
+  S.padBoostForce = 0;
+  S.stuntMode = false;
+  S.stuntRotX = S.stuntRotZ = S.stuntRotY = 0;
+  stuntDisplayTimer = 0;
+  if(mapOpen) toggleMap();
+  // Stand peds back up
+  for(const ped of PEDS) {
+    if(ped.state === 'FALLEN') {
+      ped.state = 'WALK'; ped.speed = PED_SPEED_WALK;
+      ped.root.rotation.x = 0; ped.root.rotation.z = 0;
+      ped.fallAngle = 0; pickWaypoint(ped);
+    }
+  }
+  document.getElementById('stunt-score').classList.remove('show');
+  document.getElementById('stunt-trick').classList.remove('show');
+  document.getElementById('shift-boost-label').style.opacity = '0';
+  document.getElementById('shift-boost-flash').style.opacity = '0';
+  renderer.domElement.style.filter='';
+}
+
+// ─── COLLISION DETECTION ──────────────────────────────────────
+// For BUILDINGS: AABB vs car corners.
+// For LAMP POSTS: closest-point-on-segment vs pole centre (2D).
+//   Testing only corners misses a thin pole that sits between two corners.
+//   Instead we test all 4 edges of the car rectangle as line segments.
+//   Minimum distance from any edge to the pole centre < poleR → hit.
+
+function closestPointOnSegment2D(ax,az, bx,bz, px,pz) {
+  const dx=bx-ax, dz=bz-az;
+  const lenSq=dx*dx+dz*dz;
+  if(lenSq<1e-9) return {x:ax,z:az};
+  const t=Math.max(0,Math.min(1,((px-ax)*dx+(pz-az)*dz)/lenSq));
+  return {x:ax+t*dx, z:az+t*dz};
+}
+
+function checkCollision(carPos, carHeading) {
+  const carHalfLen=2.15, carHalfW=1.1;
+  const cosH=Math.cos(carHeading), sinH=Math.sin(carHeading);
+
+  // 4 corners in world space: FL, FR, RR, RL (wound CW)
+  const localC=[[carHalfW,carHalfLen],[-carHalfW,carHalfLen],
+                 [-carHalfW,-carHalfLen],[carHalfW,-carHalfLen]];
+  const corners=localC.map(([lx,lz])=>({
+    x: lx*cosH - lz*sinH + carPos.x,
+    z: lx*sinH + lz*cosH + carPos.z,
+  }));
+  const edges=[[0,1],[1,2],[2,3],[3,0]];
+
+  // ── LAMP POSTS: segment vs circle ─────────────────────────
+  for(const col of COLLIDERS) {
+    if(!col.isLampPost || col.knocked) continue;
+    const POLE_R=0.22; // pole radius + small margin
+    for(const [i,j] of edges) {
+      const a=corners[i], b=corners[j];
+      const cp=closestPointOnSegment2D(a.x,a.z, b.x,b.z, col.x,col.z);
+      const dx=cp.x-col.x, dz=cp.z-col.z;
+      const dist=Math.sqrt(dx*dx+dz*dz);
+      if(dist<POLE_R) {
+        const pen=POLE_R-dist;
+        // Normal: from pole centre outward to the closest point on car edge
+        const nx=dist>1e-4 ? dx/dist : sinH;
+        const nz=dist>1e-4 ? dz/dist : cosH;
+        return {
+          normal:new THREE.Vector3(nx,0,nz), penetration:pen,
+          corner:new THREE.Vector3(cp.x,0,cp.z), building:col,
+        };
+      }
+    }
+  }
+
+  // ── BUILDINGS: original AABB corner test ──────────────────
+  for(const col of COLLIDERS) {
+    if(col.isLampPost) continue;
+    for(const corner of corners) {
+      if(corner.x>col.minX && corner.x<col.maxX &&
+         corner.z>col.minZ && corner.z<col.maxZ) {
+        const dxLeft=corner.x-col.minX, dxRight=col.maxX-corner.x;
+        const dzFront=corner.z-col.minZ, dzBack=col.maxZ-corner.z;
+        const minPen=Math.min(dxLeft,dxRight,dzFront,dzBack);
+        let nx=0,nz=0;
+        if(minPen===dxLeft) nx=-1;
+        else if(minPen===dxRight) nx=1;
+        else if(minPen===dzFront) nz=-1;
+        else nz=1;
+        return {normal:new THREE.Vector3(nx,0,nz), penetration:minPen,
+                corner:new THREE.Vector3(corner.x,0,corner.z), building:col};
+      }
+    }
+  }
+  return null;
+}
+
+// ─── CRASH IMPULSE RESPONSE ───────────────────────────────────
+// Impulse-Momentum Theorem:
+//   J = -(1+e)·(v_rel · n̂) / (1/mA + 1/mB)
+// Since building is infinite mass: 1/mB = 0
+//   J = -(1+e)·(v_rel · n̂) · mA
+// Velocity change: ΔV = J·n̂ / mA = -(1+e)·(v_rel · n̂)·n̂
+function applyCrashImpulse(normal) {
+  const cosH=Math.cos(S.heading), sinH=Math.sin(S.heading);
+  const vWorldX = S.vLong*sinH + S.vLat*cosH;
+  const vWorldZ = S.vLong*cosH - S.vLat*sinH;
+  const vel = new THREE.Vector3(vWorldX, 0, vWorldZ);
+
+  const vRel = vel.dot(normal); // relative velocity along normal
+  if(vRel >= 0) return 0; // moving away, no collision
+
+  const impactSpeed = Math.abs(vel.length()); // m/s
+  const e = P.restitution;
+
+  // ΔV = -(1+e)·(v_rel)  (scalar along normal)
+  const dV = -(1+e) * vRel;
+
+  // Apply impulse
+  const newVWorldX = vWorldX + dV * normal.x;
+  const newVWorldZ = vWorldZ + dV * normal.z;
+
+  // Rotate back to car-local frame
+  S.vLong =  newVWorldX*sinH + newVWorldZ*cosH;
+  S.vLat  =  newVWorldX*cosH - newVWorldZ*sinH;
+
+  // Angular impulse (crash causes yaw spin)
+  // τ = r × F  where r is moment arm from CG to impact point
+  const crossTorque = normal.x * vWorldZ - normal.z * vWorldX;
+  S.yawRate += crossTorque * 0.8;
+
+  // Kinetic energy dissipated by crumple: ΔKE = ½m(v²_before - v²_after)
+  const vBefore = impactSpeed;
+  const vAfter  = Math.hypot(newVWorldX, newVWorldZ);
+  const keLost  = .5 * P.mass * (vBefore*vBefore - vAfter*vAfter);
+
+  // Crumple depth via Hertzian contact model (simplified):
+  // F = k·δ^1.5  →  δ = (F/k)^(2/3)
+  // F = ΔP/Δt ≈ m·ΔV/dt
+  const impactForce = P.mass * Math.abs(vRel) / 0.016; // avg over ~16ms
+  const crumpleDepth = Math.pow(Math.abs(impactForce) / P.crumpleStiffness, 2/3);
+
+  return { impactSpeed, keLost, crumpleDepth, dV };
+}
+
+// ─── ROLLOVER PHYSICS ─────────────────────────────────────────
+// Tipping moment about contact line (track edge):
+// M_tip = m·g·(T/2)·cos(φ) - m·ay·h·cos(φ)   [stabilizing - destabilizing]
+// Rollover condition: ay > SSF·g  (static threshold)
+//
+// Dynamic roll: treat as damped 2nd-order ODE
+// I_xx · φ̈ + c·φ̇ + k·φ = m·ay·h - m·g·(T/2)·sin(φ)
+// Linearized: φ̈ = (m·ay·h - m·g·T/2·φ - c·φ̇) / I_xx
+function updateRollDynamics(dt, latAccel) {
+  if(S.crashed) return;
+  const { mass:m, gravity:g, cgHeight:h, trackWidth:T, Ixx } = P;
+
+  // Roll restoring torque: k·φ = m·g·T/2 (stabilizer)
+  // Roll disturbing torque: m·ay·h
+  // Damping: c ~ 2·ζ·√(k·I)  ζ≈0.3 for underdamped
+  const kRoll    = m * g * T/2;       // N·m/rad (stabilizing stiffness)
+  const cRoll    = 2 * 0.35 * Math.sqrt(kRoll * Ixx); // damping
+  const disturbTorque = m * latAccel * h;
+
+  // φ̈ = (τ_disturb - k·φ - c·φ̇) / I
+  const rollAcc = (disturbTorque - kRoll * S.rollAngle - cRoll * S.rollVel) / Ixx;
+
+  S.rollVel   += rollAcc * dt;
+  S.rollAngle += S.rollVel * dt;
+
+  // Similar for pitch (longitudinal acceleration)
+  // Include actual boost force so model matches real physics
+  const boostAccel  = S.padBoostForce / P.mass;
+  const longAccel   = (S.throttle - S.brakeInput) * 8.0 + boostAccel;
+  const kPitch      = m * g * P.wheelbase/2;
+  const cPitch      = 2 * 0.35 * Math.sqrt(kPitch * P.Iyy);
+  const pitchDistT  = m * longAccel * h * .4;
+  const pitchAcc    = (pitchDistT - kPitch * S.pitchAngle - cPitch * S.pitchVel) / P.Iyy;
+  S.pitchVel   += pitchAcc * dt;
+  S.pitchAngle += S.pitchVel * dt;
+
+  // Clamp to avoid numerical explosion when not crashed
+  if(!S.rolling) {
+    S.rollAngle  = Math.max(-0.08, Math.min(0.08, S.rollAngle));
+    S.pitchAngle = Math.max(-0.05, Math.min(0.05, S.pitchAngle));
+  }
+
+  // ── ROLLOVER TRIGGER ──────────────────────────────────────
+  // |ay| > SSF·g  OR  |φ| > arctan(T / 2h) ≈ critical tilt angle
+  const critTiltAngle = Math.atan2(T/2, h); // rad
+  const latG = Math.abs(latAccel) / g;
+
+  // Rollover without hitting a wall is disabled — crashes only happen on building impacts.
+}
+
+function triggerRollover(latAccel) {
+  S.rolling = true;
+  S.inAir   = true;
+  S.vertVel = Math.abs(S.vLong) * .25; // launch upward
+
+  // Angular impulse from tipping: τ = m·ay·h  →  ω = τ·Δt / I
+  // Lateral crash sends car rolling in roll axis
+  const rollImpulse = P.mass * Math.abs(latAccel) * P.cgHeight * 0.1;
+  S.tumbleOmega.set(
+    rollImpulse / P.Ixx * Math.sign(latAccel),   // roll
+    S.yawRate * .5,                                // yaw carried over
+    -(rollImpulse / P.Iyy) * .3,                  // induced pitch
+  );
+  S.crashCause = 'ROLLOVER';
+  S.impactSpeed= Math.abs(S.vLong) * 3.6;
+  S.keBeforeCrash = .5 * P.mass * S.vLong * S.vLong;
+}
+
+// ─── TUMBLE SIMULATION ────────────────────────────────────────
+// Rigid body tumble after rollover launch:
+// Euler integration of angular velocity:
+//   dω/dt = τ_ext / I  (τ_ext = torque from ground contact & gravity)
+//   dθ/dt = ω
+//   ω(t)  = ω₀ · e^{-γt}  (air/ground damping)
+function updateTumble(dt) {
+  if(!S.inAir) return;
+
+  // Vertical kinematics: y(t) = y₀ + vy·t - ½g·t²
+  S.airTime += dt;
+  S.vertVel  -= P.gravity * dt;
+  S.pos.y    += S.vertVel * dt;
+
+  // Horizontal velocity maintained (friction reduces on ground bounce)
+  // Ground impact
+  if(S.pos.y <= WR && S.vertVel < 0) {
+    // Bounce: vy' = -e·vy
+    const e = 0.25;
+    S.vertVel = -S.vertVel * e;
+    S.pos.y   = WR;
+
+    // Translate tumble energy to velocity loss
+    S.vLong *= 0.65;
+    S.vLat  *= 0.65;
+
+    // Ground contact adds torques (friction between roof/side and ground)
+    // τ = F·r  →  dω = τ·dt / I
+    const frictionTorque = P.mass * P.gravity * .4;
+    S.tumbleOmega.x += (Math.random()-.5) * frictionTorque * dt / P.Ixx;
+
+    if(Math.abs(S.vertVel) < .5) {
+      S.inAir = false;
+      // Come to rest — trigger final crash state after tumble settles
+      setTimeout(()=> triggerCrashState(), 800);
+    }
+  }
+
+  // Euler integration: θ += ω·dt
+  S.tumbleAngle.x += S.tumbleOmega.x * dt;
+  S.tumbleAngle.y += S.tumbleOmega.y * dt;
+  S.tumbleAngle.z += S.tumbleOmega.z * dt;
+
+  // Angular damping: ω *= e^{-γ·dt}  (γ = decay rate)
+  const γ_air    = 0.4;  // low in air
+  const γ_ground = 3.5;  // high on ground contact
+  const γ = S.pos.y > WR + 0.1 ? γ_air : γ_ground;
+  const decay = Math.exp(-γ * dt);
+  S.tumbleOmega.multiplyScalar(decay);
+
+  // Spawn smoke on ground hits
+  if(S.pos.y <= WR + .01 && Math.abs(S.vertVel) > 1) {
+    spawnSmoke(S.pos);
+  }
+}
+
+function triggerCrashState() {
+  if(S.crashed) return;
+  S.crashed = true;
+  S.keLost = S.keBeforeCrash;
+  // CRASH BANG: exponential decay noise burst, intensity = impact speed
+  playBang(S.impactSpeed / 3.6, 80); // impactSpeed is km/h, convert to m/s scale
+  const overlay = document.getElementById('crash-overlay');
+  document.getElementById('cs-spd').textContent   = S.impactSpeed.toFixed(1);
+  document.getElementById('cs-g').textContent     = S.peakG.toFixed(2);
+  document.getElementById('cs-ke').textContent    = (S.keLost/1000).toFixed(1);
+  document.getElementById('cs-cause').textContent = S.crashCause;
+  overlay.classList.add('show');
+  renderer.domElement.style.filter = 'saturate(0.3) brightness(0.7)';
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  MAIN PHYSICS STEP
+// ═══════════════════════════════════════════════════════════════
+const FIXED_DT = 1/120;
+let accumulator = 0;
+
+function physicsStep(dt) {
+  injectMobileKeys();
+  if(S.crashed && !S.inAir) return;
+  if(S.inAir) {
+    if(S.stuntMode) { updateStuntAir(dt); }
+    else            { updateTumble(dt); }
+    return;
+  }
+
+  // ── Controls ──
+  // On mobile, joystick Y gives analog throttle/brake (push up=gas, push down=brake)
+  const fwdInput = isMobile && JOY.active
+    ? Math.max(0, -JOY.dy)
+    : ((KEYS['KeyW']||KEYS['ArrowUp']) ? 1 : 0);
+  const sInput   = isMobile && JOY.active
+    ? Math.max(0, JOY.dy)
+    : ((KEYS['KeyS']||KEYS['ArrowDown']) ? 1 : 0);
+  S.handbrakeActive = !!(KEYS['Space']);
+
+  const spdKmh = Math.abs(S.vLong) * 3.6;
+
+  // S = brake if moving forward, reverse throttle if slow/stopped
+  const isMovingForward = S.vLong > 1.0;
+  const brakeInput      = (isMovingForward && sInput) ? sInput : 0;
+  const reverseInput    = (!isMovingForward && sInput) ? sInput : 0;
+
+  S.throttle  += (fwdInput   - S.throttle)   * Math.min(1, dt*8);
+  S.brakeInput += (brakeInput - S.brakeInput) * Math.min(1, dt*14);
+
+  // Gear: engage reverse (gear=0) when S pressed and nearly stopped
+  if(sInput && S.vLong <= 1.0) {
+    S.gear = 0;
+  } else if(!sInput || S.vLong < -0.1) {
+    if(S.vLong >= -0.3) {
+      S.gear = Math.max(1, S.gear === 0 ? 1 : S.gear);
+      const upT=[0,28,52,82,115,148,999], dnT=[0,0,22,45,70,100,135];
+      if(spdKmh > upT[S.gear] && S.gear < 6) S.gear++;
+      if(spdKmh < dnT[S.gear] && S.gear > 1) S.gear--;
+    }
+  }
+
+  // Gear ratio — gearRatios[0]=0 is a placeholder; use fixed reverse ratio
+  const REVERSE_RATIO = 3.2 * P.finalDrive;
+  const gr = S.gear === 0 ? REVERSE_RATIO : P.gearRatios[S.gear] * P.finalDrive;
+
+  // Active throttle for drive torque
+  const activeThrottle = S.gear === 0 ? reverseInput : S.throttle;
+
+  // ── NITROUS PHYSICS ─────────────────────────────────────────
+  if(S.nosCooldown > 0) S.nosCooldown -= dt;
+  if(!S.nosActive && S.nosCharges < P.nosMaxCharges) {
+    S.nosRecharge += dt;
+    if(S.nosRecharge >= P.nosRechargeTime) {
+      S.nosRecharge = 0;
+      S.nosCharges = Math.min(P.nosMaxCharges, S.nosCharges + 1);
+    }
+  }
+  // Compute current NOS thrust: F(t) = F0 * (t_rem / dur)  — tapers down
+  // This is a linear ramp-off: full thrust at start, zero at end
+  // ΔV = F·dt / m   (Newton's 2nd law, applied each integration step)
+  if(S.nosActive) {
+    S.nosDuration -= dt;
+    const tFrac = Math.max(0, S.nosDuration / P.nosDuration); // 1→0
+    // Slight nonlinear taper: F(t) = F0 * (tFrac^0.6) gives a punchy start
+    S.nosForce = P.nosMaxThrust * Math.pow(tFrac, 0.6);
+    if(S.nosDuration <= 0) {
+      S.nosActive = false;
+      S.nosForce  = 0;
+      // Start recharge if below max
+      if(S.nosCharges < P.nosMaxCharges) S.nosRecharge = 0;
+    }
+  } else {
+    S.nosForce = 0;
+  }
+
+  const steerT = isMobile && JOY.active
+    ? Math.sign(JOY.dx) * Math.min(1, Math.abs(JOY.dx) / 0.2)  // analog joystick
+    : ((KEYS['KeyD']||KEYS['ArrowRight'])?1:0) - ((KEYS['KeyA']||KEYS['ArrowLeft'])?1:0);
+  const sMax = P.maxSteerAngle / (1 + spdKmh*.012);
+  S.steerAngle += (steerT*sMax - S.steerAngle) * Math.min(1, P.steerRate*dt*6);
+
+  // Engine
+  const rws = (S.wheelSpeeds[2]+S.wheelSpeeds[3])/2;
+  S.rpm = Math.min(7200, Math.max(800, Math.abs(rws)*gr*60/(2*Math.PI)));
+  const rFrac = (S.rpm-800)/(7200-800);
+  const wDriveT = S.gear !== 0
+    ? activeThrottle * P.engineTorqueMax * engineTorqueCurve(rFrac) * gr * .5
+    : 0; // reverse handled as direct force below
+
+  // Weight distribution
+  const W = P.mass*P.gravity;
+  const longTransfer = P.mass*8*S.throttle*P.cgHeight/P.wheelbase;
+  const latTransfer  = P.mass*Math.abs(S.yawRate*S.vLong)*P.cgHeight/P.trackWidth;
+  const loads = [
+    Math.max(10,W*P.cgToRear/P.wheelbase/2 - longTransfer/2 + latTransfer/2),
+    Math.max(10,W*P.cgToRear/P.wheelbase/2 - longTransfer/2 - latTransfer/2),
+    Math.max(10,W*P.cgToFront/P.wheelbase/2 + longTransfer/2 + latTransfer/2),
+    Math.max(10,W*P.cgToFront/P.wheelbase/2 + longTransfer/2 - latTransfer/2),
+  ];
+
+  const v2 = S.vLong*S.vLong;
+  const aeroDown = .5*P.airDensity*P.downforceCoeff*P.frontalArea*v2;
+  const aeroDrag = .5*P.airDensity*P.dragCoeff*P.frontalArea*v2*Math.sign(S.vLong);
+
+  // Tire slip
+  const vFY = S.vLat + S.yawRate*P.cgToFront, vRY = S.vLat - S.yawRate*P.cgToRear;
+  const alphaF = Math.abs(S.vLong)>.2 ? -Math.atan2(vFY,Math.abs(S.vLong))+S.steerAngle : 0;
+  const alphaR = Math.abs(S.vLong)>.2 ? -Math.atan2(vRY,Math.abs(S.vLong)) : 0;
+  S.slipAngle = alphaR;
+
+  function sRatio(w,vx){ const vRef=Math.max(Math.abs(vx),.5); return Math.max(-1,Math.min(1,(w*WR-vx)/vRef)); }
+  function tForce(alpha,kappa,load,mu){
+    const Fz=load;
+    const Fy=Fz*mu*pacejka(alpha,1); const Fx=Fz*P.tireMuLong*pacejka(kappa,1,14,1.65,.97);
+    const c=Math.sqrt(Fy*Fy+Fx*Fx); const sc=c>Fz*mu?Fz*mu/c:1;
+    return {Fx:Fx*sc,Fy:Fy*sc};
+  }
+
+  // ── HANDBRAKE: Rear tire μ drops to hbMuFactor × normal ──────
+  // When handbrake is engaged:
+  //   μ_rear_lat = μ_lat × hbMuFactor  (≈ 12% of normal grip)
+  //   This eliminates rear cornering force → large α_R → yaw moment → spin/drift
+  //   The math: Fy_R ≈ 0 → yaw moment = Fy_F × b_f - 0 × b_r → pure front yaw
+  const rearMuLat  = S.handbrakeActive ? P.tireMuLat  * P.hbMuFactor  : P.tireMuLat;
+  const rearMuLong = S.handbrakeActive ? P.tireMuLong * P.hbLongFactor : P.tireMuLong;
+
+  // Handbrake smoke timer
+  if(S.handbrakeActive && Math.abs(S.vLong) > 2) {
+    S.hbSmokeTimer -= dt;
+    if(S.hbSmokeTimer <= 0) {
+      S.hbSmokeTimer = 0.045;
+      // Emit smoke at rear wheel positions in world space
+      const cosH=Math.cos(S.heading), sinH=Math.sin(S.heading);
+      [[-1.05,WR,-1.35],[1.05,WR,-1.35]].forEach(([lx,ly,lz])=>{
+        const wx = S.pos.x + lx*cosH - lz*sinH;
+        const wz = S.pos.z + lx*sinH + lz*cosH;
+        spawnTireSmoke(new THREE.Vector3(wx, ly, wz));
+      });
+    }
+  } else { S.hbSmokeTimer = 0; }
+
+  // Track handbrake slip angle for HUD
+  S.hbSlipAngle = alphaR;
+
+  const tFL=tForce(alphaF, S.brakeInput?sRatio(S.wheelSpeeds[0],S.vLong):0, loads[0]+aeroDown*.45, P.tireMuLat);
+  const tFR=tForce(alphaF, S.brakeInput?sRatio(S.wheelSpeeds[1],S.vLong):0, loads[1]+aeroDown*.45, P.tireMuLat);
+  const tRL=tForce(alphaR, sRatio(S.wheelSpeeds[2],S.vLong), loads[2]+aeroDown*.55, rearMuLat);
+  const tRR=tForce(alphaR, sRatio(S.wheelSpeeds[3],S.vLong), loads[3]+aeroDown*.55, rearMuLat);
+
+  // Direct reverse force: F_rev = activeThrottle × engineTorque × reverseRatio / wheelRadius
+  // Applied as negative longitudinal force (pushes car backward)
+  const reverseForce = S.gear === 0
+    ? -reverseInput * P.engineTorqueMax * engineTorqueCurve(0.3) * REVERSE_RATIO * .5 / WR
+    : 0;
+
+  // HANDBRAKE BRAKING FORCE
+  const hbBrakeForce = S.handbrakeActive
+    ? -Math.sign(S.vLong) * P.mass * P.gravity * 0.72
+    : 0;
+
+  const FxTot=(tFL.Fx+tFR.Fx)*Math.cos(S.steerAngle)+(tRL.Fx+tRR.Fx)-(tFL.Fy+tFR.Fy)*Math.sin(S.steerAngle)-aeroDrag
+             + S.nosForce + S.padBoostForce + hbBrakeForce + reverseForce;
+  const FyTot=(tFL.Fy+tFR.Fy)*Math.cos(S.steerAngle)+(tRL.Fy+tRR.Fy)+(tFL.Fx+tFR.Fx)*Math.sin(S.steerAngle);
+  const Iz=P.mass*(P.wheelbase**2+P.trackWidth**2)/12;
+  const yawMoment=(tFL.Fy+tFR.Fy)*Math.cos(S.steerAngle)*P.cgToFront+(tFL.Fx+tFR.Fx)*Math.sin(S.steerAngle)*P.cgToFront-(tRL.Fy+tRR.Fy)*P.cgToRear;
+
+  const aLong = FxTot/P.mass, aLat = FyTot/P.mass, yawAcc = yawMoment/Iz;
+  S.vLong += aLong*dt; S.vLat += (aLat - S.yawRate*S.vLong)*dt;
+  S.yawRate += yawAcc*dt; S.yawRate *= Math.exp(-dt*2.5);
+
+  // Update lateral G for rollover
+  S.lateralG = Math.abs(aLat)/P.gravity;
+  S.peakG = Math.max(S.peakG, S.lateralG);
+
+  // Wheel speeds — handbrake locks ALL wheels for strong deceleration
+  [0,1,2,3].forEach(i=>{
+    const isFront=i<2;
+    let brakeT;
+    if(isFront) {
+      // Front wheels also brake during handbrake (full sliding friction)
+      brakeT = S.handbrakeActive
+        ? P.brakeTorqueFront * 3.0
+        : S.brakeInput * P.brakeTorqueFront * .5;
+    } else {
+      // Rear wheels: full lock during handbrake
+      brakeT = S.handbrakeActive
+        ? P.brakeTorqueRear * 4.0
+        : S.brakeInput * P.brakeTorqueRear * .5;
+    }
+    const Flong=[tFL.Fx,tFR.Fx,tRL.Fx,tRR.Fx][i];
+    const net=(i>=2?wDriveT:0) - Flong*WR - Math.sign(S.wheelSpeeds[i])*brakeT;
+    S.wheelSpeeds[i]+=net/P.wheelInertia*dt;
+    if(brakeT>0&&Math.abs(S.wheelSpeeds[i])<.1)S.wheelSpeeds[i]=0;
+  });
+
+  // Position
+  S.heading -= S.yawRate*dt;
+  const cosH=Math.cos(S.heading),sinH=Math.sin(S.heading);
+  S.pos.x += (S.vLong*sinH+S.vLat*cosH)*dt;
+  S.pos.z += (S.vLong*cosH-S.vLat*sinH)*dt;
+  S.distTravelled += Math.abs(S.vLong)*dt;
+
+  // ── ROLL DYNAMICS ────────────────────────────────────────────
+  updateRollDynamics(dt, aLat);
+
+  // ── RAMP LAUNCH CHECK ────────────────────────────────────────
+  checkRampLaunch();
+
+  // ── COLLISION CHECK ──────────────────────────────────────────
+  const hit = checkCollision(S.pos, S.heading);
+  if(hit && !S.crashed) {
+    // ── LAMP POST: light object, topples and is removed from colliders ──
+    if(hit.building.isLampPost && !hit.building.knocked) {
+      hit.building.knocked = true;
+
+      // Physics: lamp post mass ~40 kg, car mass 1200 kg.
+      // Momentum transfer: Δv_car = m_post / (m_post + m_car) * v_car ≈ small
+      // Post gets knocked with impulse J = m_car * v_car * (m_post / (m_post + m_car))
+      const postMass = 40; // kg
+      const massFrac = postMass / (P.mass + postMass);
+      // Car loses only a small fraction of momentum
+      const cosH = Math.cos(S.heading), sinH = Math.sin(S.heading);
+      const vWorldX = S.vLong * sinH + S.vLat * cosH;
+      const vWorldZ = S.vLong * cosH - S.vLat * sinH;
+      const vRel = new THREE.Vector3(vWorldX, 0, vWorldZ).dot(hit.normal);
+      if(vRel < 0) {
+        // Small velocity reduction for car (pole is light)
+        const dV = -(1 + 0.1) * vRel * massFrac;
+        const newVX = vWorldX + dV * hit.normal.x;
+        const newVZ = vWorldZ + dV * hit.normal.z;
+        S.vLong = newVX * sinH + newVZ * cosH;
+        S.vLat  = newVX * cosH - newVZ * sinH;
+        // Small yaw jolt from off-center hit
+        S.yawRate += (hit.normal.x * vWorldZ - hit.normal.z * vWorldX) * 0.15;
+      }
+
+      // Visually topple the pole mesh — find it from the collider reference
+      // Animate it falling in the direction of the car's travel
+      const poleGroup = hit.building.mesh.parent;
+      // Fall direction = opposite of collision normal (away from car)
+      const fallDX = -hit.normal.x;
+      const fallDZ = -hit.normal.z;
+      // Rotation axis = perpendicular to fall direction (cross product with up)
+      // axis = up × fallDir  (so pole rotates forward like a tree)
+      const axX =  fallDZ;  // (-fallDZ, 0, fallDX) is perpendicular in xz
+      const axZ = -fallDX;
+      let topplingAngle = 0;
+      const toppleInterval = setInterval(() => {
+        topplingAngle = Math.min(topplingAngle + 0.06, Math.PI / 2);
+        if(poleGroup) {
+          // Rodrigues: rotate group around the fall axis
+          poleGroup.rotation.x = axX * topplingAngle;
+          poleGroup.rotation.z = axZ * topplingAngle;
+        }
+        if(topplingAngle >= Math.PI / 2) {
+          clearInterval(toppleInterval);
+          // Remove from colliders list so car won't keep hitting the fallen post
+          const idx = COLLIDERS.indexOf(hit.building);
+          if(idx !== -1) COLLIDERS.splice(idx, 1);
+        }
+      }, 16);
+
+      // Light clang sound effect via bang with low intensity
+      playBang(Math.abs(S.vLong) * 0.2, 300);
+      spawnDebris(S.pos.clone().add(new THREE.Vector3(0, 1.5, 0)), Math.abs(S.vLong) * 0.3, 5);
+
+    } else if(!hit.building.isLampPost) {
+      // ── BUILDING: immovable, full crash physics ─────────────────
+      // Always push car out of building first to prevent tunneling
+      S.pos.x += hit.normal.x * (hit.penetration + .05);
+      S.pos.z += hit.normal.z * (hit.penetration + .05);
+
+      const impactData = applyCrashImpulse(hit.normal);
+      if(impactData && impactData.impactSpeed > 2) {
+        // Determine crash side for crumple
+        const localNorm = new THREE.Vector3(
+          hit.normal.x*Math.cos(-S.heading) - hit.normal.z*Math.sin(-S.heading),
+          0,
+          hit.normal.x*Math.sin(-S.heading) + hit.normal.z*Math.cos(-S.heading),
+        );
+
+        const crumpleAmt = Math.min(1, impactData.crumpleDepth * 3);
+        if(localNorm.z < -.5) crumplePart('front', localNorm, crumpleAmt);
+        else if(localNorm.z > .5) crumplePart('rear', localNorm, crumpleAmt);
+        else crumplePart('cabin', localNorm, crumpleAmt);
+        crumplePart('windscreen', localNorm, crumpleAmt * .5);
+
+        // Spawn debris & smoke proportional to impact
+        if(impactData.impactSpeed > 5) {
+          spawnDebris(S.pos.clone().add(new THREE.Vector3(0,.6,0)), impactData.impactSpeed * .5, 16);
+          spawnSmoke(S.pos.clone().add(new THREE.Vector3(0,.8,0)));
+        }
+        // Play collision bang
+        playBang(impactData.impactSpeed * 0.6, 100 + impactData.impactSpeed * 2);
+
+        if(impactData.impactSpeed > 8) {
+          // Crash state triggered above ~29 km/h impact speed
+          S.crashCause   = 'FRONTAL IMPACT';
+          S.impactSpeed  = impactData.impactSpeed * 3.6;
+          S.keBeforeCrash= .5*P.mass*(impactData.impactSpeed**2);
+          S.keLost       = impactData.keLost;
+          triggerCrashState();
+        }
+
+        S.keLost += impactData.keLost;
+      }
+    }
+  }
+}
+
+// ─── VISUAL UPDATE ────────────────────────────────────────────
+function updateVisuals(dt) {
+  // Position & base rotation
+  CAR.position.copy(S.pos);
+
+  if(S.inAir) {
+    CAR.rotation.set(S.tumbleAngle.x, S.heading + S.tumbleAngle.y, S.tumbleAngle.z);
+  } else {
+    CAR.rotation.y = S.heading;
+    CAR.rotation.z = S.rollAngle;
+    CAR.rotation.x = S.pitchAngle;
+  }
+
+  // Steer
+  FL_piv.rotation.y = FR_piv.rotation.y = S.steerAngle;
+  // Spin
+  wMesh[0].rotation.x -= S.wheelSpeeds[0]*dt;
+  wMesh[1].rotation.x -= S.wheelSpeeds[1]*dt;
+  wMesh[2].rotation.x -= S.wheelSpeeds[2]*dt;
+  wMesh[3].rotation.x -= S.wheelSpeeds[3]*dt;
+
+  // ── NOS FLAME ANIMATION ──────────────────────────────────
+  if(S.nosActive) {
+    // Flame flicker: scale oscillates using sin for organic feel
+    // s(t) = 1 + A·sin(ω·t)  — simple harmonic oscillation
+    const time = performance.now() / 1000;
+    const flicker = 1.0 + 0.3 * Math.sin(time * 28) + 0.15 * Math.sin(time * 47);
+    const lengthFrac = Math.max(0.1, S.nosDuration / P.nosDuration);
+    const fScale = flicker * lengthFrac;
+    [flameL, flameR].forEach(f => f.scale.set(fScale, fScale*1.4, fScale));
+    const cScale = fScale * 0.65;
+    [coreL,  coreR ].forEach(c => c.scale.set(cScale, cScale*1.5, cScale));
+    boostLight.intensity = 3.5 * fScale;
+    boostLight.color.setHSL(0.07 + Math.random()*0.04, 1, 0.55);
+    // Emit NOS particles
+    if(Math.random() < 0.6) spawnNOSParticle();
+  } else {
+    // Fade out quickly
+    [flameL,flameR,coreL,coreR].forEach(f=>{
+      const s = f.scale.x;
+      if(s > 0.01) f.scale.multiplyScalar(Math.exp(-dt*15));
+      else f.scale.set(0,0,0);
+    });
+    boostLight.intensity = Math.max(0, boostLight.intensity - dt*8);
+  }
+
+  // ── HANDBRAKE REAR WHEEL VISUAL ───────────────────────────
+  // Rear wheels skid-colored (slight color shift when locked)
+  const hbActive = S.handbrakeActive && Math.abs(S.vLong) > 2;
+  [wMesh[2],wMesh[3]].forEach(w => {
+    w.children[0].material.color.setHSL(0, 0, hbActive ? 0.25 : 0.07);
+  });
+
+  // Dynamic FOV — boost makes it wider for speed feeling
+  const speedKmh = Math.abs(S.vLong)*3.6;
+  camera.fov = 60 + Math.min(18, speedKmh*.1) + (S.nosActive ? 8 : 0);
+  camera.updateProjectionMatrix();
+
+  // Camera — NOS makes cam lag more for dramatic effect
+  const camLagFactor = S.nosActive ? 2.5 : 4;
+  const tCamAngle = S.heading;
+  S.camAngle += (tCamAngle - S.camAngle) * Math.min(1, dt*camLagFactor);
+  const cx = S.pos.x - Math.sin(S.camAngle)*S.camDist;
+  const cz = S.pos.z - Math.cos(S.camAngle)*S.camDist;
+
+  // Camera shake on crash OR NOS micro-vibration
+  const shakeAmt = S.crashed ? .05 : S.nosActive ? 0.012 : 0;
+  camera.position.set(
+    cx + (Math.random()-.5)*shakeAmt,
+    S.pos.y + S.camHeight + (S.inAir?S.pos.y*.3:0),
+    cz + (Math.random()-.5)*shakeAmt,
+  );
+  camera.lookAt(new THREE.Vector3(S.pos.x+Math.sin(S.heading)*3, S.pos.y+1.2, S.pos.z+Math.cos(S.heading)*3));
+
+  // Sun
+  sun.position.set(S.pos.x+80,130,S.pos.z+60);
+  sun.target.position.copy(S.pos); sun.target.updateMatrixWorld();
+}
+
+// ─── HUD UPDATE ───────────────────────────────────────────────
+function updateHUD() {
+  const kmh = Math.abs(S.vLong*3.6);
+  document.getElementById('spd').textContent    = Math.round(kmh);
+  document.getElementById('gear-v').textContent = S.gear===0?'R':kmh<1&&S.throttle<.05?'N':S.gear;
+  document.getElementById('glat-v').textContent = S.lateralG.toFixed(2)+'g';
+  document.getElementById('slip-v').textContent = (Math.abs(S.slipAngle)*180/Math.PI).toFixed(1)+'°';
+  document.getElementById('roll-v').textContent = (S.rollAngle*180/Math.PI).toFixed(1)+'°';
+  document.getElementById('imp-v').textContent  = S.impactSpeed>0?S.impactSpeed.toFixed(1)+' km/h':'—';
+  document.getElementById('t-fill').style.width = (S.throttle*100)+'%';
+  document.getElementById('b-fill').style.width = (S.brakeInput*100)+'%';
+  document.getElementById('nos-v').textContent  = S.nosActive ? Math.round(S.nosForce)+' N' : '—';
+  document.getElementById('hbslip-v').textContent = S.handbrakeActive
+    ? (Math.abs(S.hbSlipAngle)*180/Math.PI).toFixed(1)+'°'
+    : '0°';
+
+  const rFrac = Math.min(1,(S.rpm-800)/(7200-800));
+  document.getElementById('rpm-arc').setAttribute('stroke-dashoffset',(330*(1-rFrac)).toFixed(1));
+  document.getElementById('rpm-arc').setAttribute('stroke',S.rpm>6500?'#ff3020':'#e8ff00');
+  document.getElementById('rpm-txt').textContent=Math.round(S.rpm);
+
+  // Rollover warning
+  const rollWarn = document.getElementById('roll-warn');
+  const critG = P.SSF * 0.45;
+  if(S.lateralG > critG && !S.crashed) {
+    rollWarn.classList.add('show');
+    rollWarn.textContent = S.lateralG > P.SSF * 0.60 ? '⚠ ROLLING OVER' : '⚠ ROLLOVER RISK';
+  } else { rollWarn.classList.remove('show'); }
+
+  // ── BOOST HUD ───────────────────────────────────────────
+  // Boost bar shows current charge progress within active burn
+  // Charge pips show available charges
+  const boostFill = document.getElementById('boost-bar-fill');
+  if(S.nosActive) {
+    const frac = S.nosDuration / P.nosDuration;
+    boostFill.style.transform = `scaleX(${frac.toFixed(3)})`;
+    boostFill.style.background = `linear-gradient(90deg, #ff3300, #ffaa00, #ffffff)`;
+  } else if(S.nosCharges < P.nosMaxCharges) {
+    // Recharging — show recharge progress
+    const rechargeFrac = S.nosRecharge / P.nosRechargeTime;
+    boostFill.style.transform = `scaleX(${rechargeFrac.toFixed(3)})`;
+    boostFill.style.background = `linear-gradient(90deg, #004466, #0088cc)`;
+  } else {
+    boostFill.style.transform = 'scaleX(1)';
+    boostFill.style.background = 'linear-gradient(90deg, #ff6600, #ffcc00, #ffffff)';
+  }
+  // Pip indicators
+  for(let i=0;i<3;i++){
+    const pip = document.getElementById(`bp${i}`);
+    pip.className = 'boost-pip' + (i < S.nosCharges ? '' : ' empty');
+  }
+  // Boost active label & screen flash
+  document.getElementById('boost-active').className = S.nosActive ? 'show' : '';
+  document.getElementById('boost-flash').className  = S.nosActive ? 'active' : '';
+  // Handbrake indicator
+  document.getElementById('hb-indicator').className = S.handbrakeActive ? 'show' : '';
+}
+
+// ─── MAIN LOOP ────────────────────────────────────────────────
+const clock = new THREE.Clock();
+let _frameN = 0;
+function animate() {
+  requestAnimationFrame(animate);
+  _frameN++;
+  const frame = Math.min(clock.getDelta(), .05);
+
+  accumulator += frame;
+  // Cap to 3 steps max per frame — prevents "spiral of death" at high speed
+  if(accumulator > FIXED_DT * 3) accumulator = FIXED_DT * 3;
+  while(accumulator >= FIXED_DT) {
+    physicsStep(FIXED_DT);
+    accumulator -= FIXED_DT;
+  }
+
+  updateDebris(frame);
+  updateSmoke(frame);
+  updateShiftBooster();
+  updateWorld();                             // cheap every frame — gen is throttled to 1 chunk/frame
+  if(_frameN % 2 === 0) updatePeds(frame);  // peds every 2 frames (half rate)
+  updateVisuals(frame);
+  updateStuntHUD(frame);
+  updateHUD();
+  updateAudio(frame);
+  if(_frameN % 12 === 0) updateMinimap();    // minimap every 12 frames
+  if(mapOpen) updateFullMap();
+  renderer.render(scene, camera);
+}
+
+window.addEventListener('resize',()=>{
+  camera.aspect=window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth,window.innerHeight);
+});
+window.addEventListener('keydown',e=>{
+  if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyF','KeyX','ShiftLeft','ShiftRight','KeyQ','KeyE'].includes(e.code))e.preventDefault();
+},{passive:false});
+
+animate();
+</script>
+</body>
+</html>
